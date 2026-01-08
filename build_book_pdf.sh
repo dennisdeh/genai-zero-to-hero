@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Script to generate a pdf that contains all chapters and sections of the book
 # Instructions (linux) - by doing the following in the terminal:
-#   1. install pandoc by running: sudo apt update && sudo apt install -y pandoc
+#   1. install pandoc and texlive by running: sudo apt update && sudo apt install -y pandoc texlive
 #   2. navigate to the repository root
 #   3. make the script executable by running: chmod +x build_book_pdf.sh
 #   4. generate the book pdf by running: ./build_book_pdf.sh
@@ -12,7 +12,7 @@ ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 OUTPUT_DIR="$ROOT_DIR/book"
 OUTPUT_PDF="$OUTPUT_DIR/book.pdf"
 
-BOOK_TITLE="Practical GenAI - From Zero to Hero"
+BOOK_TITLE="Practical Generative AI – From Zero to Hero"
 AUTHOR="Dennis V. Hansen"
 TIMESTAMP="$(date '+%Y-%m-%d %H:%M:%S')"
 REPO_URL="https://github.com/dennisdeh/genai-zero-to-hero"
@@ -76,7 +76,6 @@ mapfile -t BOOK_FILES < <(
   find "$ROOT_DIR" \
     -type f \
     -name 'book_*.md' \
-    ! -path "$OUTPUT_DIR/*" \
     | sort
 )
 
