@@ -10,8 +10,9 @@ As such, all necessary files are provided in this repository, with a clear struc
 The topics intended to be covered in this repository are:
 - Fundamentals: Technical basics, setup, mathematical foundations, best-practices
 - Containerisation: Indispensable tools like Docker and Kubernetes are covered
+- Data sourcing: How to collect and store data, including relevant tools for various data types
 - Data processing: How to work with and process structured and unstructured data
-- Visualisation: Presenting data in a clear and understandable way
+- Visualisation: Presenting data and objects in a clear and understandable way
 - Machine learning (classic): Data preprocessing, data quality, modelling techniques, evaluation, validation, deployment
 - Neural networks: Various architectures, data processing, deployment
 - Large language models (LLMs): Transformers and related architectures, GPT-like models, training, deployment
@@ -27,12 +28,13 @@ a 2-digit number that indicates the order of the part within the repository.
 Currently, the parts are:
 - p00_fundamentals
 - p01_containerisation
-- p02_data_processing
-- p03_visualisation
-- p04_ml_classic
-- p05_neural_networks
-- p06_llms
-- p07_agents
+- p02_data_sourcing
+- p03_data_processing
+- p04_visualisation
+- p05_ml_classic
+- p06_neural_networks
+- p07_llms
+- p08_agents
 
 The parts are furthermore divided into chapters (i.e. have the prefix `c{nm}_`) and potentially also sections (i.e. have the prefix `s{nm}_`).
 This is to ensure that the structure is easily navigable and that the dependencies between parts are clear.
