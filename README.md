@@ -7,6 +7,12 @@ From thereon, the focus shifts to more advanced topics.
 The philosophy is that the focus should be on the practical aspects of ML/GenAI, i.e. *learning by doing*.
 As such, all necessary files are provided in this repository, with a clear structure and dependencies between parts that are clearly defined.
 
+The repository is structured as a book, with parts, chapters and sections.
+Since this is about programming and the philosophy is "hands-on", I deemed that this is the best approach.
+Like this the code can be easily executed, and it is easy to follow the documentation, 
+which is always found in the respective folders in the files that start with `book_` (e.g. `book_fundamentals.md`).
+However, the book can also be compiled to a PDF for easy reading (see below).
+
 The topics intended to be covered in this repository are:
 - Fundamentals: Technical basics, setup, mathematical foundations, best-practices
 - Containerisation: Indispensable tools like Docker and Kubernetes are covered
@@ -43,10 +49,9 @@ There are (sub)repositories found within the main repository. These are used to 
 
 ### Material
 There are three types of resources:
-- **Book chapters/sections:** Contains relevant chapters or sections in LaTeX files that all start with a `book_` prefix. The entire book can be compiled from the `book.tex` in the root directory. 
+- **Book chapters/sections:** Contains relevant chapters or sections in Markdown files that all start with a `book_` prefix. The entire book can be compiled as a pdf from the `build_book_pdf.sh` in the root directory. 
 - **Workflows:** Complete examples related to standard ML/GenAI workflows. The file called `main` (e.g. `main.py`) is always the principal file to run for each part/chapter/section.
 - **Code snippets:** Small examples to demonstrate specialised topics. The file called `main` (e.g. `main.py`) is always the principal file to run for each part/chapter/section.
-
 
 
 ## References and Acknowledgements
@@ -57,7 +62,7 @@ and I mark this clearly in the respective files and folders following best pract
 ### Ways that this is achieved
 - All files where I am not the original owner have a header that clearly states the original author and what modifications I have made. 
 - All (external) repositories have a README.MD file, with an added Acknowledgements section that lists all relevant sources and original authors. 
-- For each chapter, a `sources.md` file lists all relevant sources 
+- For each chapter, a `sources.md` file lists all relevant sources
 
 ## Contributions
 Contributions are welcome - submit a pull request - and remember to credit yourself!
