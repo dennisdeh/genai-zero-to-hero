@@ -10,6 +10,8 @@ As such, all necessary files are provided in this repository, with a clear struc
 The topics intended to be covered in this repository are:
 - Fundamentals: Technical basics, setup, mathematical foundations, best-practices
 - Containerisation: Indispensable tools like Docker and Kubernetes are covered
+- Data processing: How to work with and process structured and unstructured data
+- Visualisation: Presenting data in a clear and understandable way
 - Machine learning (classic): Data preprocessing, data quality, modelling techniques, evaluation, validation, deployment
 - Neural networks: Various architectures, data processing, deployment
 - Large language models (LLMs): Transformers and related architectures, GPT-like models, training, deployment
@@ -25,10 +27,12 @@ a 2-digit number that indicates the order of the part within the repository.
 Currently, the parts are:
 - p00_fundamentals
 - p01_containerisation
-- p02_ml_classic
-- p03_neural_networks
-- p04_llms
-- p05_agents
+- p02_data_processing
+- p03_visualisation
+- p04_ml_classic
+- p05_neural_networks
+- p06_llms
+- p07_agents
 
 The parts are furthermore divided into chapters (i.e. have the prefix `c{nm}_`) and potentially also sections (i.e. have the prefix `s{nm}_`).
 This is to ensure that the structure is easily navigable and that the dependencies between parts are clear.
@@ -51,7 +55,7 @@ and I mark this clearly in the respective files and folders following best pract
 ### Ways that this is achieved
 - All files where I am not the original owner have a header that clearly states the original author and what modifications I have made. 
 - All (external) repositories have a README.MD file, with an added Acknowledgements section that lists all relevant sources and original authors. 
-- For each part, a `sources.md` file lists all relevant sources 
+- For each chapter, a `sources.md` file lists all relevant sources 
 
 ## Contributions
 Contributions are welcome - submit a pull request - and remember to credit yourself!
