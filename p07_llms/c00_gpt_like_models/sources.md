@@ -18,4 +18,5 @@ The references listed below also serve as additional resources for to be explore
 - Tiny GPT model: https://github.com/codewithaarohi/Build-a-Mini-GPT-Model-From-Scratch-Using-PyTorch
 - Minimal GPT: https://github.com/karpathy/minGPT (see also Nano GPT model: https://github.com/karpathy/nanoGPT)
 - OpenAI GPT-2 model: https://github.com/openai/gpt-2
+- Train Your Language Model Course: https://github.com/ImadSaddik/Train_Your_Language_Model_Course
 
