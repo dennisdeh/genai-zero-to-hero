@@ -492,3 +492,12 @@ cython_debug/
 #.idea/
 
 /book/book.pdf
+/.idea/inspectionProfiles/Project_Default.xml
+/.idea/misc.xml
+/.idea/vcs.xml
+/.idea/inspectionProfiles/profiles_settings.xml
+/.idea/genai-zero-to-hero.iml
+/.idea/modules.xml
+/.idea/.gitignore
+
+model.bin

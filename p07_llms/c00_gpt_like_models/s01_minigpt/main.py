@@ -1,49 +1,19 @@
 """
-The general workflow can be broadly divided into the following steps:
+In this script we will take a look at the first two steps in the general workflow of training a language model:
 1. Data collection and preparation
 2. Model pretraining
-3. Fine-tuning
-4. Validation
-5. Deployment
-6. Monitoring
 """
 
-# change working directory to p07_llms/c00_gpt_like_models/s01_minigpt
-import os
-
-os.chdir("p07_llms/c00_gpt_like_models/s01_minigpt")
-
+# change working directory to p07_llms/c00_gpt_like_models/s01_minigpt if running in interactive mode:
+# import os
+# os.chdir("p07_llms/c00_gpt_like_models/s01_minigpt")
 
 import random
 import tiktoken
 from datasets import load_dataset
 import torch
-from torch.utils.data import Dataset
+from pp_data.dataset_class import TextDataset
 from mingpt.model import GPT
-
-
-# Define a custom dataset class appropriate for our task
-class TextDataset(Dataset):
-    def __init__(self, tokens, block_size):
-        self.tokens = tokens
-        self.block_size = block_size
-
-    def __len__(self):
-        return len(self.tokens) - self.block_size
-
-    def get_vocab_size(self):
-        return 100277  # cl100k_base vocab size
-
-    def get_block_size(self):
-        return self.block_size
-
-    def __getitem__(self, idx):
-        # We grab a chunk of tokens of length block_size + 1
-        # x is the sequence, y is the sequence shifted by 1 (the targets)
-        chunk = self.tokens[idx : idx + self.block_size + 1]
-        x = torch.tensor(chunk[:-1], dtype=torch.long)
-        y = torch.tensor(chunk[1:], dtype=torch.long)
-        return x, y
 
 
 # %% 1. Data collection and preparation
@@ -87,6 +57,9 @@ for instruction in ls_val:
 all_tokens = data_train + data_val
 # Determine the block size (number of tokens in a context)
 block_size = 256
+assert (
+    max_tokens <= block_size
+), "The block size must be larger than the maximum number of tokens in the data"
 print(f"Block size: {block_size} tokens > {max_tokens} maximum tokens in data")
 
 # instantiate a custom dataset classes
@@ -113,7 +86,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 train_dataset = TextDataset(all_tokens, block_size)
 # instantiate the model
 model_config = GPT.get_default_config()
-model_config.model_type = "gpt-nano"
+model_config.model_type = "gpt2"
 model_config.vocab_size = vocab_size
 model_config.block_size = block_size
 model = GPT(model_config)
@@ -126,8 +99,8 @@ train_config = Trainer.get_default_config()
 train_config.learning_rate = (
     5e-4  # the model we're using is so small that we can go a bit faster
 )
-train_config.max_iters = 10000
-train_config.batch_size = 40
+train_config.max_iters = 3000
+train_config.batch_size = 16
 train_config.num_workers = 0
 trainer = Trainer(train_config, model, dataset_train)
 
@@ -175,16 +148,16 @@ trainer.run()
 final_val_loss = estimate_loss(model, dataset_val, device, eval_iters=100)
 print(f"Final validation loss after training: {final_val_loss:.5f}")
 
-# plot the training loss
+# save the model
+torch.save(model.state_dict(), "model.bin")
+
 
 # do some simple inference
-prompt = "The best way to invest money is"
+prompt = "The account"
 tokens = encoding.encode(prompt)
 input_ids = torch.tensor(tokens, dtype=torch.long, device=device).unsqueeze(0)
 output_ids = model.generate(input_ids, max_new_tokens=50)
 print(encoding.decode(output_ids[0][len(tokens) - 1 :].tolist()))
 
-# save the model
-torch.save(model.state_dict(), "model.bin")
 
 # %% 3: Fine-tuning
