@@ -18,7 +18,7 @@ import math
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
-from mingpt.utils import CfgNode as CN
+from p07_llms.c00_gpt_like_models.s01_minigpt.mingpt.utils import CfgNode as CN
 
 # -----------------------------------------------------------------------------
 
