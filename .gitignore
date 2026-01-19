@@ -500,4 +500,5 @@ cython_debug/
 /.idea/modules.xml
 /.idea/.gitignore
 
-model.bin
+model*.bin
+notes.txt

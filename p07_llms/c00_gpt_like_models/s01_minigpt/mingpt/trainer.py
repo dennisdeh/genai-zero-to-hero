@@ -6,7 +6,7 @@ Portions of this file are derived from:
 https://github.com/karpathy/minGPT
 Original author: Andrej Karpathy
 Changes: Small modifications made to the original code to allow for setups with multiple GPUs,
-added estimate_loss, batch_end_callback
+added estimate_loss, batch_end_callback, early stopping
 """
 
 import time
@@ -14,7 +14,7 @@ from collections import defaultdict
 import random
 import torch
 from torch.utils.data.dataloader import DataLoader
-from mingpt.utils import CfgNode as CN
+from p07_llms.c00_gpt_like_models.s01_minigpt.mingpt.utils import CfgNode as CN
 
 
 @torch.no_grad()
@@ -67,7 +67,7 @@ def batch_end_callback(trainer, dataset_val, device=None):
         This must not be ``None``.
     :type device: Any
 
-    :return: None
+    :return: val_loss
     """
     assert hasattr(trainer, "model")
     assert hasattr(trainer, "loss")
@@ -75,6 +75,7 @@ def batch_end_callback(trainer, dataset_val, device=None):
     assert device is not None
 
     str_print = ""
+    val_loss = None
     if trainer.iter_num % 25 == 0:
         str_print = f"iter {trainer.iter_num}: train loss {trainer.loss.item():.5f}"
 
@@ -86,6 +87,7 @@ def batch_end_callback(trainer, dataset_val, device=None):
 
     if str_print != "":
         print(str_print)
+    return val_loss
 
 
 class Trainer:
@@ -104,6 +106,8 @@ class Trainer:
         C.betas = (0.9, 0.95)
         C.weight_decay = 0.1  # only applied on matmul weights
         C.grad_norm_clip = 1.0
+        # early stopping parameters
+        C.early_stopping_rounds = 300
         return C
 
     def __init__(self, config, model, train_dataset):
@@ -129,6 +133,10 @@ class Trainer:
         self.iter_time = 0.0
         self.iter_dt = 0.0
 
+        # variables for early stopping
+        self.best_val_loss = float("inf")
+        self.early_stopping_counter = 0
+
     def add_callback(self, onevent: str, callback):
         self.callbacks[onevent].append(callback)
 
@@ -136,8 +144,10 @@ class Trainer:
         self.callbacks[onevent] = [callback]
 
     def trigger_callbacks(self, onevent: str):
+        results = []
         for callback in self.callbacks.get(onevent, []):
-            callback(self)
+            results.append(callback(self))
+        return results
 
     def run(self):
         model, config = self.model, self.config
@@ -151,7 +161,7 @@ class Trainer:
         train_loader = DataLoader(
             self.train_dataset,
             sampler=torch.utils.data.RandomSampler(
-                self.train_dataset, replacement=True, num_samples=int(1e10)
+                self.train_dataset, replacement=True, num_samples=None
             ),
             shuffle=False,
             pin_memory=True,
@@ -184,7 +194,15 @@ class Trainer:
             torch.nn.utils.clip_grad_norm_(model.parameters(), config.grad_norm_clip)
             self.optimizer.step()
 
-            self.trigger_callbacks("on_batch_end")
+            res = self.trigger_callbacks("on_batch_end")
+            # the callback might return the validation loss and in this case the early stopping counter is updated
+            val_loss = next((r for r in res if r is not None), None)
+            if val_loss is not None:
+                if val_loss < self.best_val_loss:
+                    self.best_val_loss = val_loss
+                    self.early_stopping_counter = 0
+                else:
+                    self.early_stopping_counter += 1
             self.iter_num += 1
             tnow = time.time()
             self.iter_dt = tnow - self.iter_time
@@ -192,4 +210,10 @@ class Trainer:
 
             # termination conditions
             if config.max_iters is not None and self.iter_num >= config.max_iters:
+                break
+            if (
+                config.early_stopping_rounds is not None
+                and self.early_stopping_counter >= config.early_stopping_rounds
+            ):
+                print(f"Early stopping triggered after {self.iter_num} iterations.")
                 break

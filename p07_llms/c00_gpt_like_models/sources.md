@@ -19,4 +19,5 @@ The references listed below also serve as additional resources for to be explore
 - Minimal GPT: https://github.com/karpathy/minGPT (see also Nano GPT model: https://github.com/karpathy/nanoGPT)
 - OpenAI GPT-2 model: https://github.com/openai/gpt-2
 - Train Your Language Model Course: https://github.com/ImadSaddik/Train_Your_Language_Model_Course
+- Training Large Language Models: https://www.epfl.ch/labs/lions/wp-content/uploads/2025/04/ee-628-Lecture_03_Data-Mixtures.pdf
 
