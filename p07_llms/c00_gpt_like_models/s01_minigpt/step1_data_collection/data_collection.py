@@ -12,7 +12,7 @@ def dc_wiki(
     n_samples: int = None,
     language: str = "english",
     name: str = "20231101.simple",
-    threshold_long_sentence: int = 1000,
+    threshold_long_sentence: int = 700,
     threshold_short_article: int = 100,
     list_sentences: bool = False,
     skip_short: bool = True,
@@ -23,6 +23,10 @@ def dc_wiki(
     It performs segmentation of articles into smaller sentence-based segments while
     optionally filtering sentences based on length and certain patterns. The function also
     provides the ability to skip and optionally save examples of filtered sentences.
+
+    The cleaning is done in two stages: The first stage splits the article into sentences and
+    does a regex-based cleaning to remove unwanted characters and patterns. The second stage
+    further refines the sentences.
 
     Parameters:
     n_samples: int, None
@@ -58,6 +62,21 @@ def dc_wiki(
     """
     # 0: Initialisation and data collection
     print("\n\n *** 1. Data collection and preparation *** ")
+    # assertions
+    assert isinstance(language, str), "language must be a string"
+    assert isinstance(name, str), "name must be a string"
+    assert isinstance(
+        threshold_long_sentence, int
+    ), "threshold_long_sentence must be an integer"
+    assert isinstance(
+        threshold_short_article, int
+    ), "threshold_short_article must be an integer"
+    assert isinstance(list_sentences, bool), "list_sentences must be a boolean"
+    assert isinstance(skip_short, bool), "skip_short must be a boolean"
+    assert isinstance(
+        save_skipped_examples, bool
+    ), "save_skipped_examples must be a boolean"
+
     # Download the punctuation tokeniser form nltk if not already downloaded
     try:
         nltk.data.find("tokenizers/punkt")
@@ -93,15 +112,17 @@ def dc_wiki(
     n_skipped_code = 0
     d_skipped = {}
     for n in range(len(ls_text_raw)):
+        # Get article name and text
         t = ls_article_names[n]
         article = ls_text_raw[n]
         if not article or len(article.strip()) == 0:
             continue
-
-        # Split article into sentences robustly using nltk and store in a dictionary
-        sentences = nltk.sent_tokenize(article, language=language)
         # prepare format of output dictionary
         d_articles[t] = []
+
+        # First split of article into sentences robustly using nltk and store in a dictionary
+        sentences = nltk.sent_tokenize(article, language=language)
+        s1 = ""
         if save_skipped_examples:
             d_skipped[t] = []
         for s in sentences:
@@ -152,14 +173,61 @@ def dc_wiki(
                 s = re.sub(r"\(.*?\)|\[.*?\]|\{.*?\}", "", s, flags=re.DOTALL)
                 # replacement of multiple spaces with single spaces
                 s = re.sub(r" +", " ", s)
-                # Remove accents/diacritics
+                # Remove accents/diacritics by normalising the text
                 s = unicodedata.normalize("NFD", s)
                 s = "".join([c for c in s if not unicodedata.combining(c)])
                 # remove leading and trailing whitespace
                 s = s.strip()
-                # add cleaned sentence to the dictionary for the current article
-                d_articles[t].append(s)
+                # add the cleaned sentence to the first article cleaning step
+                if len(s1) == 0:
+                    s1 = s
+                else:
+                    s1 += " " + s
+
+        # Second split of article into sentences robustly using nltk and store in a dictionary
+        sentences = nltk.sent_tokenize(s1, language=language)
+        for s in sentences:
+            if s.strip():
+                s = s.strip()
+                # some regular expressions cleaning
+                if (
+                    s == "."
+                    or s == ","
+                    or s.find(" ,") > -1
+                    or s.find(" .") > -1
+                    or s.find(" :") > -1
+                    or s.find(" ;") > -1
+                    or s.find(" !") > -1
+                    or s.find(" ?") > -1
+                    or s.find("()") > -1
+                    or s.find("''") > -1
+                    or s.find('""') > -1
+                    or any(item in s[-4:] for item in ["e.g.", ")."])
+                ):
+                    continue
+                # check that the sentence is not just a single word
+                if s.count(" ") <= 1:
+                    continue
+                # try to remove sentences involving dates that originates from lists: check when such a list begins
+                """
+                 This pattern covers:
+                 1. Month Day range (No Year): `"April 26/27:"`
+                 2. Month Day, Year: `"August 1 1914: "`
+                 3. Year First: `"1961 - "` or `"1970, December 15 – "`
+                 4. Historical Years: `"December 25, 800 - "`
+                 """
+                if (
+                    re.match(
+                        r"^(?:(?:[A-Z][a-z]+ \d{1,2}(?:[/\-]\d{1,2})?[, ]+\d{1,4})|"
+                        r"(?:\d{1,4}(?:,\s+[A-Z][a-z]+ \d{1,2}(?:[/\-]\d{1,2})?)?))\s*[\-–:]\s*",
+                        s,
+                    )
+                    is not None
+                ):
+                    break
+            d_articles[t].append(s)
         n_segments += len(d_articles[t])
+
         if list_sentences:
             pass
         else:
@@ -187,5 +255,5 @@ def dc_wiki(
     return d_articles, d_skipped
 
 
-if __name__ == "__main__":
-    d, _ = dc_wiki(n_samples=1000)
+if __name__ == "__main__2":
+    d, _ = dc_wiki(n_samples=100, list_sentences=False)

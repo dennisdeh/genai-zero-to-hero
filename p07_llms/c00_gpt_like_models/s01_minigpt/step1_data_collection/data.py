@@ -19,9 +19,10 @@ from p07_llms.c00_gpt_like_models.s01_minigpt.step1_data_collection import (
 
 # Define a custom dataset class appropriate for our task
 class TextDataset(Dataset):
-    def __init__(self, tokens, block_size):
+    def __init__(self, tokens, block_size, pad_token: int = 0):
         self.tokens = tokens
         self.block_size = block_size
+        self.pad_token = pad_token
 
     def __len__(self):
         return len(self.tokens) - self.block_size
@@ -33,15 +34,29 @@ class TextDataset(Dataset):
         # We grab a chunk of tokens of length block_size + 1
         # x is the sequence, y is the sequence shifted by 1 (the targets)
         chunk = self.tokens[idx : idx + self.block_size + 1]
+
         x = torch.tensor(chunk[:-1], dtype=torch.long)
         y = torch.tensor(chunk[1:], dtype=torch.long)
+
+        # Pad if the chunk is shorter than block_size
+        if len(x) < self.block_size:
+            padding_length = self.block_size - len(x)
+            x = torch.cat(
+                [x, torch.full((padding_length,), self.pad_token, dtype=torch.long)]
+            )
+            y = torch.cat(
+                [y, torch.full((padding_length,), self.pad_token, dtype=torch.long)]
+            )
+
         return x, y
 
 
 def data_preparation_wiki(
     d_articles: dict,
     tokeniser: Any,
+    str_sot: str = "<|startoftext|>",
     str_eot: str = "<|endoftext|>",
+    str_pad: str = "<|pad|>",
     val_pct: float = 0.1,
     sampling_strategy: str = "random sentences",
     block_size: int = 512,
@@ -54,7 +69,9 @@ def data_preparation_wiki(
     Parameters:
         d_articles: The dictionary of articles returned by dc_wiki.
         tokeniser: The tokeniser object used for tokenisation.
+        str_sot: The start-of-text token.
         str_eot: The end-of-text token.
+        str_pad: The padding token.
         val_pct: The percentage of data to use for validation.
         sampling_strategy: The strategy for sampling sentences; must be "random sentences"
             or "train first validate last"
@@ -78,7 +95,9 @@ def data_preparation_wiki(
     assert (
         isinstance(block_size, int) and block_size > 0
     ), "block_size must be a positive integer"
+    assert isinstance(str_sot, str), "str_sot must be a string"
     assert isinstance(str_eot, str), "str_eot must be a string"
+    assert isinstance(str_pad, str), "str_pad must be a string"
     assert (
         isinstance(val_pct, float) and 0 <= val_pct <= 1
     ), "val_pct must be a float between 0 and 1"
@@ -87,7 +106,7 @@ def data_preparation_wiki(
     print("Settings:")
     print(f"   Number of articles: {len(d_articles)}")
     print(f"   Number of sentences: {sum(len(v) for v in d_articles.values())}")
-    print(f"   Tokeniser: {tokeniser.__str__}")
+    print(f"   Tokeniser: {tokeniser.__class__.__name__}")
     print(f"   Block size: {block_size} tokens")
     print(f"   Data collection strategy: {sampling_strategy}")
     print(f"   Validation percentage: {val_pct * 100:.1f}%")
@@ -130,6 +149,9 @@ def data_preparation_wiki(
     # create lists of articles for training and validation sets
     ls_train = list(d_train.values())
     ls_val = list(d_val.values())
+    # remove empty strings:
+    ls_train = [x for x in ls_train if len(x.strip()) > 0]
+    ls_val = [x for x in ls_val if len(x.strip()) > 0]
 
     print(
         f"Length of text in the samples created:\n"
@@ -138,24 +160,40 @@ def data_preparation_wiki(
     )
 
     # 2: Tokenisation
-    # Initialize encoding and get EOT token
-    eot_token = tokeniser.encode_ordinary(str_eot)[0]  # End of text token
+    # Initialize encoding and special tokens
+    if hasattr(tokeniser, "encode_ordinary"):
+        # Tiktoken
+        sot_token = tokeniser.encode_ordinary(str_sot)[0]
+        eot_token = tokeniser.encode_ordinary(str_eot)[0]
+        pad_token = tokeniser.encode_ordinary(str_pad)[0]
+    else:
+        # Hugging Face tokenisers style
+        sot_token = tokeniser.token_to_id(str_sot)
+        eot_token = tokeniser.token_to_id(str_eot)
+        pad_token = tokeniser.token_to_id(str_pad)
 
-    # Tokenise all articles in each data set and concatenate with EOT token
+    # Tokenise all sentences of all articles in each data set: add start of text token, end of
+    # text token before each sentence.
     data_train = []
     max_tokens = 0
     for article in ls_train:
-        tokens = tokeniser.encode(article)
+        if hasattr(tokeniser, "encode_ordinary"):
+            tokens = tokeniser.encode(article)
+        else:
+            tokens = tokeniser.encode(article).ids
+
         max_tokens = max(max_tokens, len(tokens))
-        data_train.extend(tokens)
-        data_train.append(eot_token)
+        data_train.extend([sot_token] + tokens + [eot_token])
 
     data_val = []
     for article in ls_val:
-        tokens = tokeniser.encode(article)
+        if hasattr(tokeniser, "encode_ordinary"):
+            tokens = tokeniser.encode(article)
+        else:
+            tokens = tokeniser.encode(article).ids
+
         max_tokens = max(max_tokens, len(tokens))
-        data_val.extend(tokens)
-        data_val.append(eot_token)
+        data_val.extend([sot_token] + tokens + [eot_token])
 
     # Determine the maximum number of tokens in the data and other statistics
     print(
@@ -166,8 +204,8 @@ def data_preparation_wiki(
     )
 
     # 3: Instantiate a custom dataset classes
-    dataset_train = TextDataset(data_train, block_size)
-    dataset_val = TextDataset(data_val, block_size)
+    dataset_train = TextDataset(data_train, block_size, pad_token=pad_token)
+    dataset_val = TextDataset(data_val, block_size, pad_token=pad_token)
 
     # Print final statistics and summary
     print(
@@ -175,7 +213,7 @@ def data_preparation_wiki(
         f"   Total number of tokens: {len(data_train) + len(data_val)}\n"
         f"   Block size: {block_size} tokens\n"
         f"   Unique tokens: {len(set(data_train + data_val))}\n"
-        f"   Vocabulary size: {tokeniser.n_vocab}\n"
+        f"   Vocabulary size: {tokeniser.n_vocab if hasattr(tokeniser, 'n_vocab') else tokeniser.get_vocab_size()}\n"
         f"   Average number of tokens per sentence (training): {len(data_train)/len(ls_train):.2f}\n"
         f"   Average number of tokens per sentence (validation): {len(data_val)/len(ls_val):.2f}"
     )
@@ -242,8 +280,8 @@ def data_preparation_finance(block_size: int = 256, qa_pairs=None):
     print(f"Block size: {block_size} tokens > {max_tokens} maximum tokens in data")
 
     # instantiate a custom dataset classes
-    dataset_train = TextDataset(data_train, block_size)
-    dataset_val = TextDataset(data_val, block_size)
+    dataset_train = TextDataset(data_train, block_size, pad_token=eot_token)
+    dataset_val = TextDataset(data_val, block_size, pad_token=eot_token)
 
     # Print final statistics and summary
     print(
@@ -258,7 +296,7 @@ def data_preparation_finance(block_size: int = 256, qa_pairs=None):
     return dataset_train, dataset_val, encoding
 
 
-if __name__ == "__main__2":
+if __name__ == "__main__":
     # Data collection:
     # Initialisation and data collection
     d, _ = dc.dc_wiki(n_samples=1000, list_sentences=True)

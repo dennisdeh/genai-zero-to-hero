@@ -42,7 +42,7 @@ def train_custom_tokeniser(
     assert isinstance(name, str), "name must be a string"
     # prepare special tokens
     if special_tokens is None:
-        special_tokens = ["<|pad|>", "<|endoftext|>", unknown_token]
+        special_tokens = ["<|pad|>", "<|startoftext|>", "<|endoftext|>", unknown_token]
     else:
         special_tokens = list({*special_tokens, unknown_token})
     # prepare path

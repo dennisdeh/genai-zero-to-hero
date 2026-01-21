@@ -4,92 +4,220 @@ In this script we will take a look at the first two steps in the general workflo
 2. Model pretraining
 """
 
+# %% Initialisation
 # change working directory to p07_llms/c00_gpt_like_models/s01_minigpt if running in interactive mode:
-import os
-import sys
-
-if hasattr(sys, "ps1") or hasattr(sys, "ps2"):
-    os.chdir("p07_llms/c00_gpt_like_models/s01_minigpt")
-
 import torch
-from step1_data_collection.data import data_preparation
-from mingpt.trainer import Trainer, estimate_loss, batch_end_callback
-from mingpt.model import GPT
-import gc
+import datetime
+import tokenizers
 
-
-# %% 1: Data collection and preparation
-# set block size for the model (consistency with data will be validated)
-block_size = 256
-# Use the finance-alpaca dataset as an example, which is prepared in step1_data_collection.data
-dataset_train, dataset_val, encoding = data_preparation(block_size=block_size)
-vocab_size = int(encoding.n_vocab)
-print(
-    f"Data preparation complete:\n"
-    f"  encoding object: {encoding.__class__.__name__}\n"
-    f"  vocab size: {vocab_size}\n"
-    f"  block size: {block_size}\n"
-    f"  number of training examples: {len(dataset_train)}\n"
-    f"  number of validation examples: {len(dataset_val)}"
-)
-
-
-# %% 2: Model pretraining
-print(" *** 2. Model pretraining *** ")
+# global parameters
+training = True
+tokeniser = "custom_wiki_bpe_32k"  # tiktoken or name of a custom tokeniser
+path_custom_tokeniser = ""
+load_model = "model_20260121_062001.bin"
+path_model = ""
 # get the device to train on
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # use several GPUs if available
-use_multi_gpu = False
-# instantiate the model
-model_config = GPT.get_default_config()
-model_config.model_type = "gpt2"
-model_config.vocab_size = vocab_size
-model_config.block_size = block_size
-model = GPT(model_config)
-if use_multi_gpu:
-    # required if several GPUs are to be used available
-    model = torch.nn.DataParallel(model, device_ids=None)
-model = model.to(device)
+use_multi_gpu = True
+# set block size for the model (consistency with data will be validated)
+block_size = 512
 
-# create a Trainer object
-train_config = Trainer.get_default_config()
-train_config.learning_rate = 3e-4
-train_config.max_iters = 3000
-train_config.batch_size = 32 if use_multi_gpu else 16
-train_config.num_workers = 0
-trainer = Trainer(train_config, model, dataset_train)
+# set tokeniser
+if tokeniser == "tiktoken":
+    import tiktoken
 
+    tokeniser = tiktoken.get_encoding("cl100k_base")
+else:
+    from p07_llms.c00_gpt_like_models.s01_minigpt.step1_data_collection.tokeniser import (
+        load_custom_tokeniser,
+    )
 
-# define a callback to evaluate the loss on the validation set
-def eval_callback(trainer):
-    return batch_end_callback(trainer, dataset_val=dataset_val, device=device)
+    tokeniser = load_custom_tokeniser(name=tokeniser, path=path_custom_tokeniser)
 
+if training:
+    # %% Import modules
+    from p07_llms.c00_gpt_like_models.s01_minigpt.step1_data_collection.data import (
+        data_preparation_wiki,
+    )
+    from p07_llms.c00_gpt_like_models.s01_minigpt.step1_data_collection import (
+        data_collection as dc,
+    )
+    from p07_llms.c00_gpt_like_models.s01_minigpt.mingpt.trainer import (
+        Trainer,
+        estimate_loss,
+        batch_end_callback,
+    )
+    from p07_llms.c00_gpt_like_models.s01_minigpt.mingpt.model import GPT
+    import gc
+    import mlflow
 
-# set callbacks and clear caches
-trainer.set_callback("on_batch_end", eval_callback)
-gc.collect()
-if device.type == "cuda":
-    torch.cuda.empty_cache()  # releases cached memory back to CUDA driver
-    torch.cuda.ipc_collect()
-# run training loop
-trainer.run()
+    # set up mlflow
+    mlflow.set_tracking_uri("http://localhost:5000")
 
-# Final evaluation
-final_val_loss = estimate_loss(model, dataset_val, device, eval_iters=100)
-print(f"Final validation loss after training: {final_val_loss:.5f}")
+    # %% 1: Data collection and preparation
+    # use the curated wikipedia dataset as an example, which is prepared in step1_data_collection.data
+    d_articles, _ = dc.dc_wiki(n_samples=None, list_sentences=True)
 
-# save the model
-# Use .module.state_dict() if wrapped to avoid prefixing keys with "module."
-raw_model = model.module if hasattr(model, "module") else model
-torch.save(raw_model.state_dict(), "model.bin")
+    # get dataset
+    dataset_train, dataset_val = data_preparation_wiki(
+        d_articles=d_articles, tokeniser=tokeniser, block_size=block_size
+    )
+    vocab_size = int(
+        tokeniser.n_vocab
+        if hasattr(tokeniser, "n_vocab")
+        else tokeniser.get_vocab_size()
+    )
+    print(
+        f"Data preparation complete:\n"
+        f"   tokeniser encoding object: {tokeniser.__class__.__name__}\n"
+        f"   vocab size: {vocab_size}\n"
+        f"   block size: {block_size}\n"
+        f"   number of training examples: {len(dataset_train)}\n"
+        f"   number of validation examples: {len(dataset_val)}"
+    )
 
+    # %% 2: Model pretraining
+    print("\n\n *** 2. Model pretraining *** ")
+    # instantiate the model
+    model_config = GPT.get_default_config()
+    model_config.model_type = "gpt2"
+    model_config.vocab_size = vocab_size
+    model_config.block_size = block_size
+    model = GPT(model_config)
+    if use_multi_gpu:
+        # required if several GPUs are to be used available
+        model = torch.nn.DataParallel(model, device_ids=None)
+    model = model.to(device)
 
-# do some simple inference
-prompt = "Dividend"
-tokens = encoding.encode(prompt)
-input_ids = torch.tensor(tokens, dtype=torch.long, device=device).unsqueeze(0)
-output_ids = raw_model.generate(input_ids, max_new_tokens=50)
-print(encoding.decode(output_ids[0][len(tokens) - 1 :].tolist()))
+    # Start MLflow run
+    mlflow.set_experiment("minGPT-Pretraining")
+    mlflow.start_run()
 
+    # create a Trainer object
+    train_config = Trainer.get_default_config()
+    train_config.learning_rate = 1e-4
+    train_config.max_iters = 30000
+    train_config.batch_size = 32 if use_multi_gpu else 16
+    train_config.num_workers = 4
+    trainer = Trainer(train_config, model, dataset_train)
 
-# %% 3: Fine-tuning
+    # Log hyperparameters to MLflow
+    mlflow.log_params(
+        {
+            "model_type": model_config.model_type,
+            "tokenizer": tokeniser.__class__.__name__,
+            "block_size": block_size,
+            "learning_rate": train_config.learning_rate,
+            "max_iters": train_config.max_iters,
+            "batch_size": train_config.batch_size,
+            "vocab_size": vocab_size,
+        }
+    )
+
+    # define a callback to evaluate the loss on the validation set
+    def eval_callback(trainer):
+        loss = batch_end_callback(trainer, dataset_val=dataset_val, device=device)
+        mlflow.log_metric("train_loss", trainer.loss.item(), step=trainer.iter_num)
+        if loss is not None:
+            mlflow.log_metric("val_loss", loss, step=trainer.iter_num)
+        return loss
+
+    # set callbacks and clear caches
+    trainer.set_callback("on_batch_end", eval_callback)
+    gc.collect()
+    if device.type == "cuda":
+        torch.cuda.empty_cache()  # releases cached memory back to CUDA driver
+        torch.cuda.ipc_collect()
+    # run training loop
+    trainer.run()
+
+    # Final evaluation
+    final_val_loss = estimate_loss(model, dataset_val, device, eval_iters=100)
+    print(f"Final validation loss after training: {final_val_loss:.5f}")
+    mlflow.log_metric("final_val_loss", final_val_loss)
+
+    # save the model
+    # Use .module.state_dict() if wrapped to avoid prefixing keys with "module."
+    raw_model = model.module if hasattr(model, "module") else model
+    torch.save(
+        raw_model.state_dict(),
+        f"model_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.bin",
+    )
+    # do some simple inference
+    prompt = "The person said that"
+    if isinstance(tokeniser, tokenizers.Tokenizer):
+        tokens = tokeniser.encode(prompt).ids
+    else:
+        tokens = tokeniser.encode(prompt)
+    input_ids = torch.tensor(tokens, dtype=torch.long, device=device).unsqueeze(0)
+    output_ids = raw_model.generate(input_ids, max_new_tokens=50)
+    print(tokeniser.decode(output_ids[0][len(tokens) - 1 :].tolist()))
+
+    mlflow.end_run()
+
+else:
+    # %% Inference from a pre-trained model
+    from p07_llms.c00_gpt_like_models.s01_minigpt.mingpt.model import GPT
+
+    # Initialize encoding and get EOT token
+    if hasattr(tokeniser, "encode_ordinary"):
+        eot_token = tokeniser.encode_ordinary("<|endoftext|>")[0]  # tiktoken style
+    else:
+        eot_token = tokeniser.token_to_id("<|endoftext|>")  # Hugging Face style
+
+    # load model
+    # instantiate the model
+    model_config = GPT.get_default_config()
+    model_config.model_type = "gpt2"
+    model_config.vocab_size = 32000
+    model_config.block_size = block_size
+    model = GPT(model_config)
+    try:
+        # Attempt to load the weights
+        state_dict = torch.load(
+            "/home/deh/Documents/Coding/00_My GitHub Repositories/genai-zero-to-hero/model_20260121_062001.bin",
+            map_location=device,
+        )
+        model.load_state_dict(state_dict)
+        print("Successfully loaded weights from the saved model")
+    except FileNotFoundError:
+        print("Model file not found")
+    except Exception as e:
+        print(f"Error loading model: {e}")
+
+    model.to(device)
+
+    # do some simple inference
+    prompt = "He is"
+    if isinstance(tokeniser, tokenizers.Tokenizer):
+        tokens = tokeniser.encode(prompt).ids
+    else:
+        tokens = tokeniser.encode(prompt)
+    input_ids = torch.tensor(tokens, dtype=torch.long, device=device).unsqueeze(0)
+
+    # Manual generation loop to allow early stopping
+    max_new_tokens = 50
+    for _ in range(max_new_tokens):
+        # crop context if it exceeds block size
+        input_cond = (
+            input_ids if input_ids.size(1) <= block_size else input_ids[:, -block_size:]
+        )
+        # forward the model to get the logits for the index in the sequence
+        logits, _ = model(input_cond)
+        # pluck the logits at the final step and scale by desired temperature
+        logits = logits[:, -1, :]
+        # apply softmax to convert logits to (normalized) probabilities
+        probs = torch.nn.functional.softmax(logits, dim=-1)
+        # sample from the distribution
+        next_id = torch.multinomial(probs, num_samples=1)
+        # append sampled index to the running sequence
+        input_ids = torch.cat((input_ids, next_id), dim=1)
+
+        # STOP if we generated the EOT token
+        if next_id.item() == eot_token:
+            break
+
+    # Decode and print the result (excluding the initial prompt)
+    generated_tokens = input_ids[0][len(tokens) :].tolist()
+    print(tokeniser.decode(generated_tokens))
