@@ -11,7 +11,7 @@ import datetime
 import tokenizers
 
 # global parameters
-training = True
+training = False
 tokeniser = "custom_wiki_bpe_32k"  # tiktoken or name of a custom tokeniser
 path_custom_tokeniser = ""
 load_model = "model_20260121_062001.bin"
@@ -61,7 +61,10 @@ if training:
 
     # get dataset
     dataset_train, dataset_val = data_preparation_wiki(
-        d_articles=d_articles, tokeniser=tokeniser, block_size=block_size
+        d_articles=d_articles,
+        tokeniser=tokeniser,
+        block_size=block_size,
+        sampling_strategy="train first validate last",
     )
     vocab_size = int(
         tokeniser.n_vocab
@@ -96,7 +99,7 @@ if training:
 
     # create a Trainer object
     train_config = Trainer.get_default_config()
-    train_config.learning_rate = 1e-4
+    train_config.learning_rate = 1e-3
     train_config.max_iters = 30000
     train_config.batch_size = 32 if use_multi_gpu else 16
     train_config.num_workers = 4
@@ -189,7 +192,7 @@ else:
     model.to(device)
 
     # do some simple inference
-    prompt = "He is"
+    prompt = "He then went to the beach"
     if isinstance(tokeniser, tokenizers.Tokenizer):
         tokens = tokeniser.encode(prompt).ids
     else:
@@ -220,4 +223,4 @@ else:
 
     # Decode and print the result (excluding the initial prompt)
     generated_tokens = input_ids[0][len(tokens) :].tolist()
-    print(tokeniser.decode(generated_tokens))
+    print(prompt + tokeniser.decode(generated_tokens))
