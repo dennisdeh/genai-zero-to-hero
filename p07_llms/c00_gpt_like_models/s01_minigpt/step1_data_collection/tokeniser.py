@@ -14,7 +14,6 @@ from tokenizers.models import BPE
 from tokenizers.trainers import BpeTrainer
 from tokenizers.pre_tokenizers import ByteLevel
 from tokenizers.decoders import ByteLevel as ByteLevelDecoder
-from tokenizers.processors import TemplateProcessing
 import p07_llms.c00_gpt_like_models.s01_minigpt.step1_data_collection.data_collection as dc
 
 
@@ -42,7 +41,13 @@ def train_custom_tokeniser(
     assert isinstance(name, str), "name must be a string"
     # prepare special tokens
     if special_tokens is None:
-        special_tokens = ["<|pad|>", "<|startoftext|>", "<|endoftext|>", unknown_token]
+        special_tokens = [
+            "<|pad|>",
+            "<|startoftext|>",
+            "<|separation|>",
+            "<|endoftext|>",
+            unknown_token,
+        ]
     else:
         special_tokens = list({*special_tokens, unknown_token})
     # prepare path
@@ -66,16 +71,6 @@ def train_custom_tokeniser(
         trainer=trainer,
     )
 
-    # Optional: add BOS/EOS around sequences (useful for causal LM training)
-    # tokenizer.post_processor = TemplateProcessing(
-    #     single="<bos> $A <eos>",
-    #     pair="<bos> $A <eos> $B <eos>",
-    #     special_tokens=[
-    #         ("<bos>", tokenizer.token_to_id("<bos>")),
-    #         ("<eos>", tokenizer.token_to_id("<eos>")),
-    #     ],
-    # )
-
     # Save
     tokenizer.save(f"{path}/{name}.json")
 
@@ -87,15 +82,25 @@ def load_custom_tokeniser(name: str = "custom_wiki_bpe_32k", path: str = ""):
     return Tokenizer.from_file(f"{load}.json")
 
 
-if __name__ == "__main__2":
+if __name__ == "__main__":
+    path_custom_tokeniser = (
+        "p07_llms/c00_gpt_like_models/s01_minigpt/trained_tokenisers"
+    )
     d_articles, _ = dc.dc_wiki(n_samples=None, list_sentences=False)
 
     # train custom tokeniser
-    train_custom_tokeniser(d_articles, name="custom_wiki_bpe_32k", path="")
+    train_custom_tokeniser(
+        d_articles,
+        name="custom_wiki_bpe_32k",
+        path=path_custom_tokeniser,
+    )
 
     # load custom tokeniser
-    tokeniser = load_custom_tokeniser(name="custom_wiki_bpe_32k", path="")
-    # ----- Quick sanity check -----
+    tokeniser = load_custom_tokeniser(
+        name="custom_wiki_bpe_32k", path=path_custom_tokeniser
+    )
+
+    # encode and decode an example sentence
     text = "World Heritage Sites are places in the world which are very important."
     enc = tokeniser.encode(text)
     print("Tokens:", enc.tokens[:30])
@@ -103,6 +108,12 @@ if __name__ == "__main__2":
     print(
         "padding id:",
         tokeniser.token_to_id("<|pad|>"),
+        "start of text id:",
+        tokeniser.token_to_id("<|startoftext|>"),
+        "separator id:",
+        tokeniser.token_to_id("<|separation|>"),
         "end of text id:",
         tokeniser.token_to_id("<|endoftext|>"),
+        "unknown id:",
+        tokeniser.token_to_id("<|unknown|>"),
     )
