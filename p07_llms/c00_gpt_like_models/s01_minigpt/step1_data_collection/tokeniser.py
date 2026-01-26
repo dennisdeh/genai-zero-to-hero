@@ -82,7 +82,7 @@ def load_custom_tokeniser(name: str = "custom_wiki_bpe_32k", path: str = ""):
     return Tokenizer.from_file(f"{load}.json")
 
 
-if __name__ == "__main__":
+if __name__ == "__main__2":
     path_custom_tokeniser = (
         "p07_llms/c00_gpt_like_models/s01_minigpt/trained_tokenisers"
     )
@@ -103,7 +103,8 @@ if __name__ == "__main__":
     # encode and decode an example sentence
     text = "World Heritage Sites are places in the world which are very important."
     enc = tokeniser.encode(text)
-    print("Tokens:", enc.tokens[:30])
+    print("Encoded:", enc.ids)
+    print("Tokens used:", enc.tokens[:30])
     print("Num tokens:", len(enc.ids))
     print(
         "padding id:",
