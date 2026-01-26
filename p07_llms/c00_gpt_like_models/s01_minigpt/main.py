@@ -1,25 +1,24 @@
 """
-In this script we will take a look at the first two steps in the general workflow of training a language model:
-1. Data collection and preparation
+In this script we will take a look at the second steps in the general workflow of training a language model:
 2. Model pretraining
 """
 
 # %% Initialisation
-# change working directory to p07_llms/c00_gpt_like_models/s01_minigpt if running in interactive mode:
+import os
 import torch
 import datetime
 import tokenizers
 
 # global parameters
-training = False
+training = True
 tokeniser = "custom_wiki_bpe_32k"  # tiktoken or name of a custom tokeniser
-path_custom_tokeniser = ""
+path_custom_tokeniser = "p07_llms/c00_gpt_like_models/s01_minigpt/trained_tokenisers"
 load_model = "model_20260121_062001.bin"
-path_model = ""
+path_model = "p07_llms/c00_gpt_like_models/s01_minigpt/trained_models"
 # get the device to train on
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # use several GPUs if available
-use_multi_gpu = True
+use_multi_gpu = False
 # set block size for the model (consistency with data will be validated)
 block_size = 512
 
@@ -100,7 +99,7 @@ if training:
     # create a Trainer object
     train_config = Trainer.get_default_config()
     train_config.learning_rate = 1e-3
-    train_config.max_iters = 30000
+    train_config.max_iters = 10000
     train_config.batch_size = 32 if use_multi_gpu else 16
     train_config.num_workers = 4
     trainer = Trainer(train_config, model, dataset_train)
@@ -145,7 +144,9 @@ if training:
     raw_model = model.module if hasattr(model, "module") else model
     torch.save(
         raw_model.state_dict(),
-        f"model_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.bin",
+        os.path.join(
+            path_model, f"model_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.bin"
+        ),
     )
     # do some simple inference
     prompt = "The person said that"
@@ -179,7 +180,7 @@ else:
     try:
         # Attempt to load the weights
         state_dict = torch.load(
-            "/home/deh/Documents/Coding/00_My GitHub Repositories/genai-zero-to-hero/model_20260121_062001.bin",
+            os.path.join(path_model, load_model),
             map_location=device,
         )
         model.load_state_dict(state_dict)
