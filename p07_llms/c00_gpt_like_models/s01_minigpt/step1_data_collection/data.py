@@ -17,8 +17,11 @@ from p07_llms.c00_gpt_like_models.s01_minigpt.step1_data_collection import (
 )
 
 
-# Define a custom dataset class appropriate for our task
 class TextDataset(Dataset):
+    """
+    Custom dataset class for text data with token-based operations.
+    """
+
     def __init__(self, tokens, block_size, pad_token: int = 0):
         self.tokens = tokens
         self.block_size = block_size
@@ -47,6 +50,49 @@ class TextDataset(Dataset):
             y = torch.cat(
                 [y, torch.full((padding_length,), self.pad_token, dtype=torch.long)]
             )
+
+        return x, y
+
+
+class QnADataset(Dataset):
+    def __init__(self, tokens, pad_token: int = 0):
+        """
+        Custom dataset class for discrete QnA samples
+
+        Args:
+            tokens: List of token lists, where each list represents one QnA pair
+            pad_token: The padding token ID
+        """
+        # Filter out None values and empty samples
+        self.tokens = [s for s in tokens if s is not None and len(s) > 0]
+
+        if len(self.tokens) == 0:
+            raise ValueError("Cannot create QnADataset with empty samples list")
+
+        self.pad_token = pad_token
+        self.block_size = len(self.tokens[0])
+
+        # Validate all samples have the same length
+        for i, token in enumerate(self.tokens):
+            if len(token) != self.block_size:
+                raise ValueError(
+                    f"Sample {i} has length {len(token)}, expected {self.block_size}. "
+                    f"All samples must have the same length."
+                )
+
+    def __len__(self):
+        return len(self.tokens)
+
+    def get_block_size(self):
+        return self.block_size
+
+    def __getitem__(self, idx):
+        # Get the sample (already padded to consistent length)
+        tokens = self.tokens[idx]
+
+        # x is the sequence, y is the sequence shifted by 1 (the targets)
+        x = torch.tensor(tokens[:-1], dtype=torch.long)
+        y = torch.tensor(tokens[1:], dtype=torch.long)
 
         return x, y
 
@@ -160,7 +206,7 @@ def data_preparation_wiki(
     )
 
     # 2: Tokenisation
-    # Initialize encoding and special tokens
+    # Initialise encoding and special tokens
     if hasattr(tokeniser, "encode_ordinary"):
         # Tiktoken
         sot_token = tokeniser.encode_ordinary(str_sot)[0]
@@ -221,99 +267,259 @@ def data_preparation_wiki(
     return dataset_train, dataset_val
 
 
-def data_preparation_finance(block_size: int = 256, qa_pairs=None):
+def data_preparation_finance(
+    d_qna: dict,
+    tokeniser: Any,
+    str_sot: str = "<|startoftext|>",
+    str_eot: str = "<|endoftext|>",
+    str_sep: str = "<|separation|>",
+    str_pad: str = "<|pad|>",
+    val_pct: float = 0.1,
+    block_size: int = 512,
+):
     """
-    The function collects the finance-alpaca dataset, training and validation splits, tokenises
-    them, and creates custom dataset classes.
+    The function collects an example QnA dataset, training and validation splits, tokenises
+    them, and creates custom dataset classes, taking the input data in the format
+    provided by dc_wiki in the data collection module.
 
-    The block size is checked to ensure that it is larger than the maximum number of tokens in the data.
+    Parameters:
+        d_qna: The dictionary of articles returned by dc_finance_qna or similar functions
+            where each key is the question and the value is the answer.
+        tokeniser: The tokeniser object used for tokenisation.
+        str_sot: The start-of-text token.
+        str_eot: The end-of-text token.
+        str_sep: The separation token.
+        str_pad: The padding token.
+        val_pct: The percentage of data to use for validation.
+        block_size: The maximum number of tokens in a context window.
 
     Returns:
         dataset_train: Ready-to-use PyTorch dataset for training.
         dataset_val: Ready-to-use PyTorch dataset for validation.
         encoding: The tokeniser object
     """
-    print(" *** 1. Data collection and preparation *** ")
-    # 1: Data collection
-    # Use the finance-alpaca dataset (this contains only data labelled "train"; we split it manually into
-    # train and validation sets), and we take the "instruction" column
-    ds = load_dataset("gbharti/finance-alpaca", split="train")
-    ls_instructions = list(ds["instruction"])
-    print(f"Text examples: {ls_instructions[:2]}")
+    # 0: Initialisation and data collection
+    print(" *** 1. Data preparation *** ")
+    # assertions
+    assert isinstance(d_qna, dict), "d_qna must be a dictionary of articles"
+    assert all(
+        isinstance(v, str) for v in d_qna.values()
+    ), "All values in d_qna must be lists of sentences"
+    assert isinstance(
+        tokeniser, (tiktoken.core.Encoding, tokenizers.Tokenizer)
+    ), "tokeniser must be from a supported class"
+    assert (
+        isinstance(block_size, int) and block_size > 0
+    ), "block_size must be a positive integer"
+    assert isinstance(str_sot, str), "str_sot must be a string"
+    assert isinstance(str_eot, str), "str_eot must be a string"
+    assert isinstance(str_pad, str), "str_pad must be a string"
+    assert (
+        isinstance(val_pct, float) and 0 <= val_pct <= 1
+    ), "val_pct must be a float between 0 and 1"
+    # useful messages
+    print("Settings:")
+    print(f"   Number of questions: {len(d_qna)}")
+    print(f"   Tokeniser: {tokeniser.__class__.__name__}")
+    print(f"   Block size: {block_size} tokens")
+    print(f"   Validation percentage: {val_pct * 100:.1f}%")
 
-    # Longest instruction in the dataset
-    max_len = max(len(instruction) for instruction in ls_instructions)
-    print(f"Longest example text: {max_len} characters")
+    # 1: Split into train and validation sets
+    qna_pairs = list(d_qna.items())  # [(question, answer), ...]
+    random.shuffle(qna_pairs)
+    split_idx = int(len(qna_pairs) * (1 - val_pct))
+    ls_train = qna_pairs[:split_idx]
+    ls_val = qna_pairs[split_idx:]
 
-    # 2: Split into train and validation sets
-    random.shuffle(ls_instructions)
-    split_idx = int(len(ls_instructions) * 0.9)
-    ls_train = ls_instructions[:split_idx]
-    ls_val = ls_instructions[split_idx:]
-    print(f"Training samples: {len(ls_train)}, Validation samples: {len(ls_val)}")
+    # 2: Tokenisation
+    # Initialise encoding and special tokens
+    if hasattr(tokeniser, "encode_ordinary"):
+        # Tiktoken
+        sot_token = tokeniser.encode_ordinary(str_sot)[0]
+        eot_token = tokeniser.encode_ordinary(str_eot)[0]
+        sep_token = tokeniser.encode_ordinary(str_sep)[0]
+        pad_token = tokeniser.encode_ordinary(str_pad)[0]
+    else:
+        # Hugging Face tokenisers style
+        sot_token = tokeniser.token_to_id(str_sot)
+        eot_token = tokeniser.token_to_id(str_eot)
+        sep_token = tokeniser.token_to_id(str_sep)
+        pad_token = tokeniser.token_to_id(str_pad)
 
-    # 3: Tokenisation
-    # Initialize encoding and get EOT token
-    encoding = tiktoken.get_encoding("cl100k_base")
-    eot_token = encoding.encode_ordinary("<|endoftext|>")[0]  # End of text token
-
-    # Tokenise all data and concatenate with EOT token
-    data_train = []
+    # First pass: calculate max_tokens and filter/truncate samples
     max_tokens = 0
-    for instruction in ls_train:
-        tokens = encoding.encode(instruction)
-        max_tokens = max(max_tokens, len(tokens))
-        data_train.extend(tokens)
-        data_train.append(eot_token)  # Add EOT token after each instruction
+    n_too_long = 0
+    n_truncated = 0
+    filtered_train = []
+    filtered_val = []
+
+    for q, a in ls_train:
+        if hasattr(tokeniser, "encode_ordinary"):
+            q_tokens = tokeniser.encode(q)
+            a_tokens = tokeniser.encode(a)
+        else:
+            q_tokens = tokeniser.encode(q).ids
+            a_tokens = tokeniser.encode(a).ids
+
+        total_len = len(q_tokens) + len(a_tokens) + 3  # +3 for sot, sep, eot
+        if total_len > block_size:
+            # Truncate answer to fit within block_size instead of discarding
+            available_for_answer = block_size - len(q_tokens) - 3
+            if (
+                available_for_answer > 20
+            ):  # Keep only if we have reasonable space for answer
+                a_tokens = a_tokens[:available_for_answer]
+                total_len = len(q_tokens) + len(a_tokens) + 3
+                n_truncated += 1
+                filtered_train.append((q, q_tokens, a, a_tokens))
+                max_tokens = max(max_tokens, total_len)
+            else:
+                n_too_long += 1
+        else:
+            filtered_train.append((q, q_tokens, a, a_tokens))
+            max_tokens = max(max_tokens, total_len)
+
+    for q, a in ls_val:
+        if hasattr(tokeniser, "encode_ordinary"):
+            q_tokens = tokeniser.encode(q)
+            a_tokens = tokeniser.encode(a)
+        else:
+            q_tokens = tokeniser.encode(q).ids
+            a_tokens = tokeniser.encode(a).ids
+
+        total_len = len(q_tokens) + len(a_tokens) + 3
+        if total_len > block_size:
+            # Truncate answer to fit within block_size instead of discarding
+            available_for_answer = block_size - len(q_tokens) - 3
+            if (
+                available_for_answer > 20
+            ):  # Keep only if we have reasonable space for answer
+                a_tokens = a_tokens[:available_for_answer]
+                total_len = len(q_tokens) + len(a_tokens) + 3
+                n_truncated += 1
+                filtered_train.append((q, q_tokens, a, a_tokens))
+                max_tokens = max(max_tokens, total_len)
+            else:
+                n_too_long += 1
+        else:
+            filtered_val.append((q, q_tokens, a, a_tokens))
+            max_tokens = max(max_tokens, total_len)
+
+    print(
+        f"Training samples: {len(filtered_train)}, Validation samples: {len(filtered_val)}"
+    )
+    if n_truncated > 0:
+        print(f"Note: Truncated {n_truncated} QnA pairs to fit within block_size")
+    if n_too_long > 0:
+        print(
+            f"Warning: Discarded {n_too_long} QnA pairs (question too long or insufficient space for answer)"
+        )
+
+    # Second pass: create discrete samples with consistent padding
+    data_train = []
+    for q, q_tokens, a, a_tokens in filtered_train:
+        sample_len = len(q_tokens) + len(a_tokens) + 3
+        pad_tokens = block_size - sample_len
+        data_train.append(
+            [sot_token]
+            + q_tokens
+            + [sep_token]
+            + a_tokens
+            + [eot_token]
+            + [pad_token] * pad_tokens
+        )
 
     data_val = []
-    for instruction in ls_val:
-        tokens = encoding.encode(instruction)
-        max_tokens = max(max_tokens, len(tokens))
-        data_val.extend(tokens)
-        data_val.append(eot_token)
-    # Determine the block size (number of tokens in a context)
+    for q, q_tokens, a, a_tokens in filtered_val:
+        sample_len = len(q_tokens) + len(a_tokens) + 3
+        pad_tokens = block_size - sample_len
+        data_val.append(
+            [sot_token]
+            + q_tokens
+            + [sep_token]
+            + a_tokens
+            + [eot_token]
+            + [pad_token] * pad_tokens
+        )
 
+    # Determine the maximum number of tokens in the data and other statistics
+    total_train_tokens = sum(len(sample) for sample in data_train)
+    total_val_tokens = sum(len(sample) for sample in data_val)
+    all_tokens = [token for sample in data_train + data_val for token in sample]
+
+    print(
+        "Number of tokens in the datasets created:\n"
+        f"   Training: {total_train_tokens}\n"
+        f"   Validation: {total_val_tokens}\n"
+        f"   Sample length (including special tokens and padding): {max_tokens}"
+    )
+    # assertions
+    assert total_train_tokens > 0, "No training samples generated"
+    assert total_val_tokens > 0, "No validation samples generated"
     assert (
-        max_tokens <= block_size
-    ), "The block size must be larger than the maximum number of tokens in the data"
-    print(f"Block size: {block_size} tokens > {max_tokens} maximum tokens in data")
+        total_train_tokens / len(data_train) == block_size
+    ), "Inconsistent tokenisation"
 
-    # instantiate a custom dataset classes
-    dataset_train = TextDataset(data_train, block_size, pad_token=eot_token)
-    dataset_val = TextDataset(data_val, block_size, pad_token=eot_token)
+    # 3: Instantiate a custom dataset classes
+    dataset_train = QnADataset(data_train, pad_token=pad_token)
+    dataset_val = QnADataset(data_val, pad_token=pad_token)
 
     # Print final statistics and summary
     print(
         f"Statistics of training and validation data:\n"
-        f"  Total number of tokens: {len(data_train) + len(data_val)}\n"
-        f"  Unique tokens: {len(set(data_train + data_val))}\n"
-        f"  Vocabulary size: {encoding.n_vocab}\n"
-        f"  Average number of tokens per sentence (training): {len(data_train)/len(ls_train):.2f}\n"
-        f"  Average number of tokens per sentence (validation): {len(data_val)/len(ls_val):.2f}"
+        f"   Total number of samples: {len(data_train) + len(data_val)}\n"
+        f"   Training samples: {len(data_train)}\n"
+        f"   Validation samples: {len(data_val)}\n"
+        f"   Sample length: {max_tokens} tokens\n"
+        f"   Block size: {block_size} tokens\n"
+        f"   Unique tokens: {len(set(all_tokens))}\n"
+        f"   Vocabulary size: {tokeniser.n_vocab if hasattr(tokeniser, 'n_vocab') else tokeniser.get_vocab_size()}\n"
     )
 
-    return dataset_train, dataset_val, encoding
+    return dataset_train, dataset_val
 
 
-if __name__ == "__main__":
+if __name__ == "__main__2":
+    # Wiki dataset
     # Data collection:
     # Initialisation and data collection
     d, _ = dc.dc_wiki(n_samples=1000, list_sentences=True)
     # Select tokeniser
-    tknsr = tiktoken.get_encoding("cl100k_base")
+    tokeniser = tiktoken.get_encoding("cl100k_base")
     # Prepare data
     dataset_train, dataset_val = data_preparation_wiki(
-        d_articles=d, tokeniser=tknsr, block_size=256
+        d_articles=d, tokeniser=tokeniser, block_size=256
     )
 
     n_limit = 10
     n0 = 0
     for x, y in dataset_train:
         print(f"input {n0}:")
-        print(f"   {tknsr.decode(x.tolist())}")
+        print(f"   {tokeniser.decode(x.tolist())}")
         print(f"target {n0}:")
-        print(f"   {tknsr.decode(y.tolist())}")
+        print(f"   {tokeniser.decode(y.tolist())}")
+        print(" ---------------- ")
+        if n0 >= n_limit:
+            break
+        else:
+            n0 += 1
+
+    # Finance QnA dataset
+    # Initialisation and data collection
+    d = dc.dc_finance_qna()
+    # Select tokeniser
+    tokeniser = tiktoken.get_encoding("cl100k_base")
+    # Prepare data
+    dataset_train, dataset_val = data_preparation_finance(
+        d_qna=d, tokeniser=tokeniser, block_size=256
+    )
+    n_limit = 10
+    n0 = 0
+    for x, y in dataset_val:
+        print(f"input {n0}:")
+        print(f"   {tokeniser.decode(x.tolist())}")
+        print(f"target {n0}:")
+        print(f"   {tokeniser.decode(y.tolist())}")
         print(" ---------------- ")
         if n0 >= n_limit:
             break

@@ -255,5 +255,82 @@ def dc_wiki(
     return d_articles, d_skipped
 
 
+def dc_finance_qna(n_samples: int = None, threshold_skip_long_text: int = 700) -> dict:
+    """
+    Processes a financial Q&A dataset by filtering and preparing the data according to
+    specified conditions, such as sample size and text length thresholds.
+
+    This function collects data from the "finance-alpaca" dataset, performs filtering
+    to eliminate duplicates, cleans invalid entries (e.g., overly long or empty content),
+    and returns the processed dataset as a dictionary.
+
+    :param n_samples: The number of samples to include in the dataset. If None, all
+        available samples are processed.
+    :type n_samples: int, optional
+    :param threshold_skip_long_text: The maximum allowable length for both questions
+        and answers. Entries exceeding this threshold are removed during preprocessing.
+    :type threshold_skip_long_text: int
+    :return: A dictionary mapping questions to their corresponding answers, where only
+        valid entries (filtered and cleaned) are included.
+    :rtype: dict
+    """
+    # 0: Initialisation and data collection
+    print("\n\n *** 1. Data collection and preparation *** ")
+    # assertions
+    assert isinstance(n_samples, (int, type(None))), "n_samples must be an integer"
+    assert isinstance(
+        threshold_skip_long_text, int
+    ), "threshold_skip_long_text must be an integer"
+    assert threshold_skip_long_text > 0, "threshold_skip_long_text must be positive"
+
+    # 1: Data collection
+    # Use the finance-alpaca dataset (this contains only data labelled "train";
+    # we take the "instruction" and "output" columns
+    ds = load_dataset("gbharti/finance-alpaca", split="train")
+    if n_samples is not None:
+        df = ds.to_pandas()[:n_samples]
+    else:
+        df = ds.to_pandas()
+    df = df[["instruction", "output"]].dropna()
+    df = df.set_index("instruction")
+    # remove duplicated questions
+    df = df[~df.index.duplicated(keep="first")]
+    # convert to dict so that the keys are questions and the values are answers
+    d = dict(zip(df.index, df["output"]))
+
+    # 2: Cleaning and preprocessing of questions and answers
+    n_long_questions = 0
+    n_long_answers = 0
+    n_empty_questions = 0
+    n_empty_answers = 0
+    for k, v in d.copy().items():
+        if len(k) > threshold_skip_long_text:
+            n_long_questions += 1
+            del d[k]
+            continue
+        if len(v) > threshold_skip_long_text:
+            n_long_answers += 1
+            del d[k]
+            continue
+        if len(k) == 0:
+            n_empty_questions += 1
+            del d[k]
+            continue
+        if len(v) == 0:
+            n_empty_answers += 1
+            del d[k]
+            continue
+    print(f"Total QnAs after preprocessing: {len(d)}")
+    print(f"   Skipped long questions: {n_long_questions}")
+    print(f"   Skipped long answers: {n_long_answers}")
+    print(f"   Skipped empty questions: {n_empty_questions}")
+    print(f"   Skipped empty answers: {n_empty_answers}")
+
+    return d
+
+
 if __name__ == "__main__2":
+    # Wiki dataset
     d, _ = dc_wiki(n_samples=100, list_sentences=False)
+    # Finance Q&A dataset
+    d = dc_finance_qna(n_samples=100)
