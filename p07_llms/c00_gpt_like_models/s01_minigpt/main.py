@@ -10,15 +10,15 @@ import datetime
 import tokenizers
 
 # global parameters
-training = True
+training = False
 tokeniser = "custom_wiki_bpe_32k"  # tiktoken or name of a custom tokeniser
 path_custom_tokeniser = "p07_llms/c00_gpt_like_models/s01_minigpt/trained_tokenisers"
-load_model = "model_20260121_062001.bin"
+load_model = "model_20260127_201351.bin"
 path_model = "p07_llms/c00_gpt_like_models/s01_minigpt/trained_models"
 # get the device to train on
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # use several GPUs if available
-use_multi_gpu = False
+use_multi_gpu = True
 # set block size for the model (consistency with data will be validated)
 block_size = 512
 
@@ -98,8 +98,8 @@ if training:
 
     # create a Trainer object
     train_config = Trainer.get_default_config()
-    train_config.learning_rate = 1e-3
-    train_config.max_iters = 10000
+    train_config.learning_rate = 5e-4
+    train_config.max_iters = 50000
     train_config.batch_size = 32 if use_multi_gpu else 16
     train_config.num_workers = 4
     trainer = Trainer(train_config, model, dataset_train)
