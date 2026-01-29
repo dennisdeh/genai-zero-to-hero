@@ -76,10 +76,10 @@ def batch_end_callback(trainer, dataset_val, device=None):
 
     str_print = ""
     val_loss = None
-    if trainer.iter_num % 25 == 0:
+    if trainer.iter_num % 50 == 0:
         str_print = f"iter {trainer.iter_num}: train loss {trainer.loss.item():.5f}"
 
-    if trainer.iter_num % 100 == 0:
+    if trainer.iter_num % 250 == 0:
         val_loss = estimate_loss(
             model=trainer.model, dataset=dataset_val, device=device
         )
@@ -107,7 +107,7 @@ class Trainer:
         C.weight_decay = 0.1  # only applied on matmul weights
         C.grad_norm_clip = 1.0
         # early stopping parameters
-        C.early_stopping_rounds = 300
+        C.early_stopping_rounds = 20  # * 250
         return C
 
     def __init__(self, config, model, train_dataset):

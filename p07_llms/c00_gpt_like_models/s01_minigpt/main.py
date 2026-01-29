@@ -98,9 +98,14 @@ if training:
 
     # create a Trainer object
     train_config = Trainer.get_default_config()
-    train_config.learning_rate = 5e-4
-    train_config.max_iters = 50000
+    train_config.learning_rate = 1e-4
+    train_config.max_iters = 30000
     train_config.batch_size = 32 if use_multi_gpu else 16
+    train_config.betas = (0.9, 0.999)
+    train_config.weight_decay = 0.01  # only applied on matmul weights
+    train_config.grad_norm_clip = 1.0
+    # early stopping parameters
+    train_config.early_stopping_rounds = 50  # *250
     train_config.num_workers = 4
     trainer = Trainer(train_config, model, dataset_train)
 
@@ -113,6 +118,11 @@ if training:
             "learning_rate": train_config.learning_rate,
             "max_iters": train_config.max_iters,
             "batch_size": train_config.batch_size,
+            "betas": train_config.betas,
+            "weight_decay": train_config.weight_decay,
+            "grad_norm_clip": train_config.grad_norm_clip,
+            "early_stopping_rounds": train_config.early_stopping_rounds,
+            "num_workers": train_config.num_workers,
             "vocab_size": vocab_size,
         }
     )
