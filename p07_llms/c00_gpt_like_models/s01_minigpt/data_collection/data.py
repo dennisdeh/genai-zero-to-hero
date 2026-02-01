@@ -12,7 +12,7 @@ import tokenizers
 from datasets import load_dataset
 import torch
 from torch.utils.data import Dataset
-from p07_llms.c00_gpt_like_models.s01_minigpt.step1_data_collection import (
+from p07_llms.c00_gpt_like_models.s01_minigpt.data_collection import (
     data_collection as dc,
 )
 

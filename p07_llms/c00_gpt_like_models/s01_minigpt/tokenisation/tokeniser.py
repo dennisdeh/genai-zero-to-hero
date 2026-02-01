@@ -14,7 +14,7 @@ from tokenizers.models import BPE
 from tokenizers.trainers import BpeTrainer
 from tokenizers.pre_tokenizers import ByteLevel
 from tokenizers.decoders import ByteLevel as ByteLevelDecoder
-import p07_llms.c00_gpt_like_models.s01_minigpt.step1_data_collection.data_collection as dc
+import p07_llms.c00_gpt_like_models.s01_minigpt.data_collection.data_collection as dc
 
 
 def train_custom_tokeniser(
@@ -101,7 +101,7 @@ if __name__ == "__main__2":
     )
 
     # encode and decode an example sentence
-    text = "World Heritage Sites are places in the world which are very important."
+    text = "The Swiss banks are known for"
     enc = tokeniser.encode(text)
     print("Encoded:", enc.ids)
     print("Tokens used:", enc.tokens[:30])
