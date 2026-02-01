@@ -28,7 +28,7 @@ if tokeniser == "tiktoken":
 
     tokeniser = tiktoken.get_encoding("cl100k_base")
 else:
-    from p07_llms.c00_gpt_like_models.s01_minigpt.step1_data_collection.tokeniser import (
+    from p07_llms.c00_gpt_like_models.s01_minigpt.tokenisation.tokeniser import (
         load_custom_tokeniser,
     )
 
@@ -36,10 +36,10 @@ else:
 
 if training:
     # %% Import modules
-    from p07_llms.c00_gpt_like_models.s01_minigpt.step1_data_collection.data import (
+    from p07_llms.c00_gpt_like_models.s01_minigpt.data_collection.data import (
         data_preparation_wiki,
     )
-    from p07_llms.c00_gpt_like_models.s01_minigpt.step1_data_collection import (
+    from p07_llms.c00_gpt_like_models.s01_minigpt.data_collection import (
         data_collection as dc,
     )
     from p07_llms.c00_gpt_like_models.s01_minigpt.mingpt.trainer import (

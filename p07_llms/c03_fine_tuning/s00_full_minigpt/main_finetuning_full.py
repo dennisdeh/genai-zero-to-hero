@@ -3,11 +3,12 @@ import datetime
 import tokenizers
 import os
 
-# 0: Set global settings and load model
-training = True
+# 0: Set global settings and load pre-trained (and fine-tuned) models
+training = False
 tokeniser = "custom_wiki_bpe_32k_"  # tiktoken or name of a custom tokeniser
 path_custom_tokeniser = "p07_llms/c00_gpt_like_models/s01_minigpt/trained_tokenisers"
-load_model = "model_20260127_201351.bin"
+load_pt_model = "model_20260129_071023.bin"
+load_ft_model = "model_20260129_071023.bin"
 path_model = "p07_llms/c00_gpt_like_models/s01_minigpt/trained_models"
 # get the device to train on
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -22,7 +23,7 @@ if tokeniser == "tiktoken":
 
     tokeniser = tiktoken.get_encoding("cl100k_base")
 else:
-    from p07_llms.c00_gpt_like_models.s01_minigpt.step1_data_collection.tokeniser import (
+    from p07_llms.c00_gpt_like_models.s01_minigpt.data_collection.tokeniser import (
         load_custom_tokeniser,
     )
 
@@ -42,10 +43,10 @@ else:
 
 if training:
     # %% Import modules
-    from p07_llms.c00_gpt_like_models.s01_minigpt.step1_data_collection.data import (
+    from p07_llms.c00_gpt_like_models.s01_minigpt.data_collection.data import (
         data_preparation_finance,
     )
-    from p07_llms.c00_gpt_like_models.s01_minigpt.step1_data_collection import (
+    from p07_llms.c00_gpt_like_models.s01_minigpt.data_collection import (
         data_collection as dc,
     )
     from p07_llms.c00_gpt_like_models.s01_minigpt.mingpt.trainer import (
@@ -95,7 +96,7 @@ if training:
     try:
         # Attempt to load the weights
         state_dict = torch.load(
-            os.path.join(path_model, load_model),
+            os.path.join(path_model, load_pt_model),
             map_location=device,
         )
         model.load_state_dict(state_dict)
@@ -116,9 +117,14 @@ if training:
 
     # create a Trainer object
     train_config = Trainer.get_default_config()
-    train_config.learning_rate = 1e-5
-    train_config.max_iters = 1000
+    train_config.learning_rate = 1e-6
+    train_config.max_iters = 5000
     train_config.batch_size = 32 if use_multi_gpu else 16
+    train_config.betas = (0.9, 0.999)
+    train_config.weight_decay = 0.01  # only applied on matmul weights
+    train_config.grad_norm_clip = 1.0
+    # early stopping parameters
+    train_config.early_stopping_rounds = 10  # *250
     train_config.num_workers = 4
     trainer = Trainer(train_config, model, dataset_train)
 
@@ -199,7 +205,7 @@ else:
     try:
         # Attempt to load the weights
         state_dict = torch.load(
-            "/home/deh/Documents/Coding/00_My GitHub Repositories/genai-zero-to-hero/model_20260121_062001.bin",
+            os.path.join(path_model, load_ft_model),
             map_location=device,
         )
         model.load_state_dict(state_dict)
@@ -244,26 +250,3 @@ else:
     # Decode and print the result (excluding the initial prompt)
     generated_tokens = input_ids[0][len(tokens) :].tolist()
     print(prompt + tokeniser.decode(generated_tokens))
-
-# %% 5: Validate
-# model.eval()
-# final_val_loss = estimate_loss(model, dataset_val, device, eval_iters=50)
-# print(f"Fine-tuning complete. Final validation loss: {final_val_loss:.5f}")
-#
-# # Test Generation
-# prompt = "The impact of inflation on"
-# input_ids = torch.tensor(
-#     encoding.encode(prompt), dtype=torch.long, device=device
-# ).unsqueeze(0)
-# output_ids = model.generate(
-#     input_ids, max_new_tokens=30, do_sample=True, temperature=0.7
-# )
-# generated_text = encoding.decode(output_ids[0].tolist())
-#
-# print("\n--- Validation Generation ---")
-# print(f"Prompt: {prompt}")
-# print(f"Generated: {generated_text}")
-#
-# # Save the fine-tuned model
-# torch.save(model.state_dict(), "model_finetuned.bin")
-# print("\nFine-tuned model saved as 'model_finetuned.bin'")

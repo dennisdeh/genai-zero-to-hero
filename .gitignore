@@ -502,3 +502,4 @@ cython_debug/
 
 model*.bin
 notes.txt
+notes_*
