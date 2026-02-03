@@ -1,0 +1,19 @@
+services:
+  unsloth:
+    image: unsloth/unsloth:latest
+    container_name: gzh_unsloth
+    ports:
+      - 8888:8888  # JupyterLab
+      - 2222:22  # SSH
+    environment:
+      - JUPYTER_PASSWORD=pass
+    volumes:
+      - .:/workspace/work
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: no

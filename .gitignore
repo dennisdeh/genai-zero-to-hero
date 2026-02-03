@@ -503,3 +503,4 @@ cython_debug/
 model*.bin
 notes.txt
 notes_*
+/unsloth_compiled_cache/
