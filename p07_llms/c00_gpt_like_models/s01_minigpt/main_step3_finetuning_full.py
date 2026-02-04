@@ -1,3 +1,20 @@
+"""
+In this script we will take a look at the third step in the general workflow of training a language model:
+3. Model fine-tuning
+
+We will take the processed dataset of finance QnA articles and the model trained in step 2
+and continue training the large language model on this data to teach it to answer questions
+related to finance.
+
+The path to save (and load) the model will be specified in the global settings at the top of the script.
+Good performance of the trained model is obtained after ~5k iterations (early stopping is activated
+per default) with the default hyperparameters.
+MLflow is used for logging the training progress per default, expected to be running in a docker container
+on port 5000.
+
+If training = False, then inference with a saved pre-trained model will be performed.
+"""
+
 import torch
 import datetime
 import tokenizers
@@ -23,7 +40,7 @@ if tokeniser == "tiktoken":
 
     tokeniser = tiktoken.get_encoding("cl100k_base")
 else:
-    from p07_llms.c00_gpt_like_models.s01_minigpt.data_collection.tokeniser import (
+    from p07_llms.c00_gpt_like_models.s01_minigpt.tokenisation import (
         load_custom_tokeniser,
     )
 

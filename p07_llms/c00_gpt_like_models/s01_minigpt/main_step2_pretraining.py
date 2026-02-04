@@ -1,5 +1,5 @@
 """
-In this script we will take a look at the second steps in the general workflow of training a language model:
+In this script we will take a look at the second step in the general workflow of training a language model:
 2. Model pretraining
 
 We will take the processed dataset of Wikipedia articles (simple English) and the tokeniser
