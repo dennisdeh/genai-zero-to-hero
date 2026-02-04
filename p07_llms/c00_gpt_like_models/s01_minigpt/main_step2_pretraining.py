@@ -1,14 +1,30 @@
+"""
+In this script we will take a look at the second steps in the general workflow of training a language model:
+2. Model pretraining
+
+We will take the processed dataset of Wikipedia articles (simple English) and the tokeniser
+trained in step 1 and train a large language model on it.
+
+The path to save (and load) the model will be specified in the global settings at the top of the script.
+Good performance of the trained model is obtained after ~15k iterations (early stopping is activated
+per default) with the default hyperparameters.
+MLflow is used for logging the training progress per default, expected to be running in a docker container
+on port 5000.
+
+If training = False, then inference with a saved pre-trained model will be performed.
+"""
+
+# %% Initialisation
+import os
 import torch
 import datetime
 import tokenizers
-import os
 
-# 0: Set global settings and load pre-trained (and fine-tuned) models
+# global parameters
 training = False
-tokeniser = "custom_wiki_bpe_32k_"  # tiktoken or name of a custom tokeniser
+tokeniser = "custom_wiki_bpe_32k"  # tiktoken or name of a custom tokeniser
 path_custom_tokeniser = "p07_llms/c00_gpt_like_models/s01_minigpt/trained_tokenisers"
-load_pt_model = "model_20260129_071023.bin"
-load_ft_model = "model_20260129_071023.bin"
+load_model = "model_20260127_201351.bin"
 path_model = "p07_llms/c00_gpt_like_models/s01_minigpt/trained_models"
 # get the device to train on
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -23,28 +39,16 @@ if tokeniser == "tiktoken":
 
     tokeniser = tiktoken.get_encoding("cl100k_base")
 else:
-    from p07_llms.c00_gpt_like_models.s01_minigpt.data_collection.tokeniser import (
+    from p07_llms.c00_gpt_like_models.s01_minigpt.tokenisation.tokeniser import (
         load_custom_tokeniser,
     )
 
     tokeniser = load_custom_tokeniser(name=tokeniser, path=path_custom_tokeniser)
-    # if the separation token does not exist, add it
-    if tokeniser.token_to_id("<|separation|>") is None:
-        tokeniser.add_special_tokens(["<|separation|>"])
-
-
-# Initialize encoding and get EOT token
-if hasattr(tokeniser, "encode_ordinary"):
-    eot_token = tokeniser.encode_ordinary("<|endoftext|>")[0]  # tiktoken style
-    sep_token = tokeniser.encode_ordinary("<|separation|>")
-else:
-    eot_token = tokeniser.token_to_id("<|endoftext|>")  # Hugging Face style
-    sep_token = tokeniser.token_to_id("<|separation|>")
 
 if training:
     # %% Import modules
     from p07_llms.c00_gpt_like_models.s01_minigpt.data_collection.data import (
-        data_preparation_finance,
+        data_preparation_wiki,
     )
     from p07_llms.c00_gpt_like_models.s01_minigpt.data_collection import (
         data_collection as dc,
@@ -62,14 +66,15 @@ if training:
     mlflow.set_tracking_uri("http://localhost:5000")
 
     # %% 1: Data collection and preparation
-    # use the curated finance QnA dataset as an example, which is prepared in step1_data_collection.data
-    d_qna = dc.dc_finance_qna(n_samples=None, threshold_skip_long_text=1000)
+    # use the curated wikipedia dataset as an example, which is prepared in `main_step1_data_preparation.py`
+    d_articles, _ = dc.dc_wiki(n_samples=None, list_sentences=True)
 
     # get dataset
-    dataset_train, dataset_val = data_preparation_finance(
-        d_qna=d_qna,
+    dataset_train, dataset_val = data_preparation_wiki(
+        d_articles=d_articles,
         tokeniser=tokeniser,
         block_size=block_size,
+        sampling_strategy="train first validate last",
     )
     vocab_size = int(
         tokeniser.n_vocab
@@ -85,46 +90,33 @@ if training:
         f"   number of validation examples: {len(dataset_val)}"
     )
 
-    # %% 3: Model fine-tuning
-    print("\n\n *** 3. Model fine-tuning (full) *** ")
-    # instantiate the model class and load parameters from the pre-training stage
+    # %% 2: Model pretraining
+    print("\n\n *** 2. Model pretraining *** ")
+    # instantiate the model
     model_config = GPT.get_default_config()
     model_config.model_type = "gpt2"
-    model_config.vocab_size = 32000
+    model_config.vocab_size = vocab_size
     model_config.block_size = block_size
     model = GPT(model_config)
-    try:
-        # Attempt to load the weights
-        state_dict = torch.load(
-            os.path.join(path_model, load_pt_model),
-            map_location=device,
-        )
-        model.load_state_dict(state_dict)
-        print("Successfully loaded weights from the saved model")
-    except FileNotFoundError:
-        print("Model file not found")
-    except Exception as e:
-        print(f"Error loading model: {e}")
-
     if use_multi_gpu:
         # required if several GPUs are to be used available
         model = torch.nn.DataParallel(model, device_ids=None)
     model = model.to(device)
 
     # Start MLflow run
-    mlflow.set_experiment("minGPT-FineTuning")
+    mlflow.set_experiment("minGPT-Pretraining")
     mlflow.start_run()
 
     # create a Trainer object
     train_config = Trainer.get_default_config()
-    train_config.learning_rate = 1e-6
-    train_config.max_iters = 5000
+    train_config.learning_rate = 1e-4
+    train_config.max_iters = 30000
     train_config.batch_size = 32 if use_multi_gpu else 16
     train_config.betas = (0.9, 0.999)
     train_config.weight_decay = 0.01  # only applied on matmul weights
     train_config.grad_norm_clip = 1.0
     # early stopping parameters
-    train_config.early_stopping_rounds = 10  # *250
+    train_config.early_stopping_rounds = 50  # *250
     train_config.num_workers = 4
     trainer = Trainer(train_config, model, dataset_train)
 
@@ -137,6 +129,11 @@ if training:
             "learning_rate": train_config.learning_rate,
             "max_iters": train_config.max_iters,
             "batch_size": train_config.batch_size,
+            "betas": train_config.betas,
+            "weight_decay": train_config.weight_decay,
+            "grad_norm_clip": train_config.grad_norm_clip,
+            "early_stopping_rounds": train_config.early_stopping_rounds,
+            "num_workers": train_config.num_workers,
             "vocab_size": vocab_size,
         }
     )
@@ -169,12 +166,11 @@ if training:
     torch.save(
         raw_model.state_dict(),
         os.path.join(
-            path_model,
-            f"model_ft_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.bin",
+            path_model, f"model_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.bin"
         ),
     )
     # do some simple inference
-    prompt = "How do I make money?<|separation|>"
+    prompt = "The person said that"
     if isinstance(tokeniser, tokenizers.Tokenizer):
         tokens = tokeniser.encode(prompt).ids
     else:
@@ -205,7 +201,7 @@ else:
     try:
         # Attempt to load the weights
         state_dict = torch.load(
-            os.path.join(path_model, load_ft_model),
+            os.path.join(path_model, load_model),
             map_location=device,
         )
         model.load_state_dict(state_dict)

@@ -504,3 +504,6 @@ model*.bin
 notes.txt
 notes_*
 /unsloth_compiled_cache/
+/outputs/
+/finetuned_model/
+/p07_llms/c00_gpt_like_models/s01_minigpt/trained_tokenisers/custom_wiki_bpe_32k.json

@@ -22,7 +22,7 @@ pip install -e .
 Here's how you'd instantiate a GPT-2 (124M param version):
 
 ```python
-from mingpt.model import GPT
+from p07_llms.c00_gpt_like_models.s01_minigpt.mingpt.model import GPT
 model_config = GPT.get_default_config()
 model_config.model_type = 'gpt2'
 model_config.vocab_size = 50257 # openai's model vocabulary
@@ -37,7 +37,7 @@ And here's how you'd train it:
 # torch LongTensor of lengths up to 1024, with integers from [0,50257)
 train_dataset = YourDataset()
 
-from mingpt.trainer import Trainer
+from p07_llms.c00_gpt_like_models.s01_minigpt.mingpt.trainer import Trainer
 train_config = Trainer.get_default_config()
 train_config.learning_rate = 5e-4 # many possible options, see the file
 train_config.max_iters = 1000
@@ -137,4 +137,5 @@ MIT
 This repository is a fork of https://github.com/karpathy/minGPT.
 
 A small modification in `mingpt/model.py` was made to the original code to make it compatible with PyTorch 2.9 
-used in the conda environment `gzh_llm0`.
+used in the conda environment `gzh_llm0`. 
+Furthermore, improvements have been made to allow for use of multiple GPUs, early stopping and improved logging.
