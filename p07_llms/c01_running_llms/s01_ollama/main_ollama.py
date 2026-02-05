@@ -1,11 +1,14 @@
 import requests
 import json
+from p07_llms.c01_running_llms.s01_ollama.utils.helpers import (
+    ollama_get_available_models,
+    normalise_ollama_model,
+)
 
 
-OLLAMA_API_URL = "http://localhost:07011"
-
-
-def query_ollama(model: str, prompt: str, stream: bool = False) -> dict:
+def query_ollama(
+    model: str, prompt: str, stream: bool = False, url="http://localhost:07011"
+) -> dict:
     """
     Send a query to the Ollama API and return the response.
 
@@ -13,11 +16,12 @@ def query_ollama(model: str, prompt: str, stream: bool = False) -> dict:
         model: The model name to use (e.g., 'llama2', 'mistral'), must be installed
         prompt: The prompt/query to send
         stream: Whether to stream the response
+        url: The base URL of the Ollama API
 
     Returns:
         dict: The API response
     """
-    url = f"{OLLAMA_API_URL}/api/generate"
+    url = f"{url}/api/generate"
 
     payload = {"model": model, "prompt": prompt, "stream": stream}
 
@@ -30,24 +34,20 @@ def query_ollama(model: str, prompt: str, stream: bool = False) -> dict:
         return response.json()
 
 
-def list_models() -> dict:
-    """List all available models in Ollama."""
-    url = f"{OLLAMA_API_URL}/api/tags"
-    response = requests.get(url)
-    response.raise_for_status()
-    return response.json()
-
-
 if __name__ == "__main__":
     # Example usage
-    print("Available models:")
-    models = list_models()
-    print(json.dumps(models, indent=2))
+    base_url = "http://localhost:07011"
+    model = "qwen3"
+    prompt = "What is Python?"
+
+    models = ollama_get_available_models(base_url=base_url)
+    model = normalise_ollama_model(model, models)
+    print(f"Using model: {model}")
 
     print("\nSending query to Ollama...")
     result = query_ollama(
-        model="qwen3:latest",  # Change to your installed model
-        prompt="What is Python?",
+        model=model,
+        prompt=prompt,
         stream=False,
     )
 
