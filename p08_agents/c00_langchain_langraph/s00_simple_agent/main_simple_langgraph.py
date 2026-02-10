@@ -21,7 +21,7 @@ def get_stock_analysis(ticker: str) -> str:
     Returns:
         A string containing financial analysis data
     """
-    # Mock financial data - in production, this would call a real API
+    # mock financial data - in production, this would call a real API
     mock_data = {
         "AAPL": "Apple Inc. - Current Price: $175.23, P/E Ratio: 28.5, Market Cap: $2.8T, 52-week range: $164-198",
         "GOOGL": "Alphabet Inc. - Current Price: $140.15, P/E Ratio: 25.3, Market Cap: $1.7T, 52-week range: $120-155",
@@ -30,7 +30,7 @@ def get_stock_analysis(ticker: str) -> str:
 
     ticker_upper = ticker.upper()
     if ticker_upper in mock_data:
-        return f"Financial Analysis for {ticker_upper}:\n{mock_data[ticker_upper]}\nNote: Strong fundamentals, consider long-term investment."
+        return f"Financial Analysis for {ticker_upper}:\n{mock_data[ticker_upper]}"
     else:
         return (
             f"Unable to find financial data for ticker: {ticker}. "
@@ -49,15 +49,15 @@ def chatbot(state: MessagesState):
 
 
 def compile_graph():
-    # Build the graph
+    # initialise building the language graph
     graph_builder = StateGraph(MessagesState)
 
-    # Add nodes
+    # add nodes
     graph_builder.add_node("chatbot", chatbot)
     tool_node = ToolNode(tools=[get_stock_analysis])
     graph_builder.add_node("tools", tool_node)
 
-    # Add edges
+    # add edges
     graph_builder.add_edge(START, "chatbot")
     graph_builder.add_conditional_edges(
         "chatbot",
@@ -65,7 +65,7 @@ def compile_graph():
     )
     graph_builder.add_edge("tools", "chatbot")
 
-    # Compile the graph
+    # compile the graph
     return graph_builder.compile()
 
 
@@ -75,7 +75,7 @@ if __name__ == "__main__":
 
     print("Stock Analysis Agent initialised!")
     print(f"Using LLM: {os.getenv('LLM_TO_USE')}")
-    str_query = "Can you analyze Apple stock (AAPL) for me?"
+    str_query = "Can you analyse the Apple stock (AAPL) for me?"
     print(f"Asking: {str_query}")
 
     messages = [HumanMessage(content=str_query)]
