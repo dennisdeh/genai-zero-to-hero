@@ -16,7 +16,7 @@ class AgentState(TypedDict):
 
 # Initial and final nodes
 def initial_node(state: AgentState) -> AgentState:
-    state["message"] = "Enter a list of numbers separated by spaces"
+    state["message"] = "Enter a list of numbers separated by commas"
     return state
 
 
@@ -78,7 +78,11 @@ graph.add_node("tool_multiplication", tool_multiplication)
 graph.add_node("final", final_node)
 # Add edges
 graph.add_edge(START, "initial")
-graph.add_conditional_edges("initial", determine_branch)
+graph.add_conditional_edges(
+    "initial",
+    determine_branch,
+    {"tool_sum": "tool_sum", "tool_multiplication": "tool_multiplication"},
+)
 graph.add_edge("tool_sum", "final")
 graph.add_edge("tool_multiplication", "final")
 graph.add_edge("final", END)
