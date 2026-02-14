@@ -84,14 +84,20 @@ if __name__ == "__main__":
     # instantiate the language graph
     graph = compile_graph()
 
+    # visualise
+    with open(
+        "p08_agents/c00_langchain_langraph/s01_simple_agents/graph_v2.png", "wb"
+    ) as f:
+        f.write(graph.get_graph().draw_mermaid_png())
+
     while True:
         """
         Try e.g.: How is the performance of AAPL compared to GOOGL
-        
+
         Then (to illustrate the memory) try: Which stocks have you analysed?
-        
+
         Then (to illustrate limitations of the tool): How about Tesla?
-        """#
+        """  #
         prompt = input("Message for the Agent: ")
         result = graph.invoke(
             {"messages": [{"role": "user", "content": prompt}]},
