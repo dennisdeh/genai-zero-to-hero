@@ -133,7 +133,7 @@ graph.add_edge("final", END)
 
 agent = graph.compile()
 with open(
-    "p08_agents/c00_langchain_langraph/s00_very_simple_graph/graph_very_simple_v2.png",
+    "p08_agents/c00_langchain_langgraph/s00_very_simple_graphs/graph_very_simple_looping.png",
     "wb",
 ) as f:
     f.write(agent.get_graph().draw_mermaid_png())

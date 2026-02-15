@@ -13,6 +13,7 @@ The references listed below also serve as additional resources for to be explore
 ### Videos lectures:
 - Train your own LLM - Tutorial: https://www.youtube.com/watch?v=9Ge0sMm65jo
 - Build a Mini GPT Model From Scratch Using PyTorch: https://www.youtube.com/watch?v=5BQZEQUL9-k
+- I Visualised Attention in Transformers: https://www.youtube.com/watch?v=RNF0FvRjGZk
 
 ### Code Repositories:
 - Tiny GPT model: https://github.com/codewithaarohi/Build-a-Mini-GPT-Model-From-Scratch-Using-PyTorch

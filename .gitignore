@@ -510,3 +510,4 @@ notes_*
 /p07_llms/c03_more_fine_tuning/s00_peft_unsloth/trained_models/
 /p07_llms/c00_gpt_like_models/s01_minigpt/trained_tokenisers/
 /p07_llms/c00_gpt_like_models/s01_minigpt/trained_models/
+/.ai/mcp/mcp.json
