@@ -1,5 +1,5 @@
 """
-Demonstrate a simple stock analysis agent using LangGraph.
+Demonstrate a simple stock analysis ReAct agent using LangGraph with a chat interface in the terminal.
 """
 
 import os
