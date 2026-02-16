@@ -62,7 +62,7 @@ def chatbot_with_tools(state: AgentState) -> AgentState:
     return {"messages": [response]}
 
 
-if __name__ == "__main__2":
+if __name__ == "__main__":
     # set global variables
     os.environ["LLM_TO_USE"] = "ollama"
     print("Simple agent with tools initialised!")
@@ -81,6 +81,12 @@ if __name__ == "__main__2":
     )
     # compile the graph
     agent = graph.compile()
+
+    # visualise
+    with open(
+        "p08_agents/c00_langchain_langgraph/s01_simple_agents/graph_3.png", "wb"
+    ) as f:
+        f.write(agent.get_graph().draw_mermaid_png())
 
     # invoke the agent for a given initial state
     inputs = [

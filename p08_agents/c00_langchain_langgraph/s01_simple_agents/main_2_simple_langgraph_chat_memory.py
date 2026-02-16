@@ -1,5 +1,5 @@
 """
-Demonstrate a simple chat agent using LangGraph - without memory and tools
+Demonstrate a simple chat agent using LangGraph - with memory but no tools
 """
 
 import os
@@ -29,7 +29,7 @@ if __name__ == "__main__":
     # set global variables
     os.environ["LLM_TO_USE"] = "ollama"
 
-    print("Simple agent without memory and tools initialised!")
+    print("Simple agent with memory, but no tools initialised!")
     print(f"Using LLM backend: {os.getenv('LLM_TO_USE')}")
 
     # initialise building the language graph
@@ -42,10 +42,17 @@ if __name__ == "__main__":
     # compile the graph
     agent = graph.compile()
 
-    # chat loop (the state is overwritten each time, hence no memory)
+    # visualise
+    with open(
+        "p08_agents/c00_langchain_langgraph/s01_simple_agents/graph_2.png", "wb"
+    ) as f:
+        f.write(agent.get_graph().draw_mermaid_png())
+
+    # chat loop (the state is appended each time, hence memory)
+    messages = []
     while True:
         str_input = input("Enter a message: ")
-        messages = [HumanMessage(content=str_input)]
+        messages.append(HumanMessage(content=str_input))
         print(f"current state: {messages}")
         output = agent.invoke({"messages": messages})
         print(f"Agent: {output['messages'][-1].content}")
