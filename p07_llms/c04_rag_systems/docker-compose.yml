@@ -1,0 +1,30 @@
+volumes:
+  ollama_data:
+  qdrant_data:
+
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: gzh-ollama_rag
+    ports:
+      - ${OLLAMA_PORT_HOST}:${OLLAMA_PORT_CONT}
+    volumes:
+      - ollama_data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [ gpu ]
+    restart: unless-stopped
+
+  qdrant:
+    image: qdrant/qdrant:master
+    container_name: gzh-qdrant_rag
+    restart: unless-stopped
+    ports:
+      - ${QDRANT_PORT_HOST}:${QDRANT_PORT_CONT}
+    volumes:
+      - qdrant_data:/qdrant/storage
