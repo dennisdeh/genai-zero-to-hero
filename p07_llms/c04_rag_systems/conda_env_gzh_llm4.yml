@@ -116,5 +116,13 @@ dependencies:
   - zstandard=0.25.0=py313h54dd161_1
   - zstd=1.5.7=hb78ec9c_6
   - pip:
+      - dataclasses-json==0.6.7
+      - httpx-sse==0.4.3
       - langchain-classic==1.0.1
+      - langchain-community==0.4.1
       - langchain-text-splitters==1.1.1
+      - marshmallow==3.26.2
+      - mypy-extensions==1.1.0
+      - pydantic-settings==2.13.1
+      - typing-inspect==0.9.0
+prefix: /home/deh/miniconda3/envs/gzh_llm4
