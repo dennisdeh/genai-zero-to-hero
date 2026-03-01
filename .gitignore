@@ -511,4 +511,4 @@ notes_*
 /p07_llms/c00_gpt_like_models/s01_minigpt/trained_tokenisers/
 /p07_llms/c00_gpt_like_models/s01_minigpt/trained_models/
 /.ai/mcp/mcp.json
-/p07_llms/c04_rag_systems/documents/
+/p07_llms/c04_rag_systems/s01_finma_rag_system/documents/
