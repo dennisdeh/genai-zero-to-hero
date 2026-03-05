@@ -29,6 +29,7 @@ path_env = os.path.join("p07_llms/c04_rag_systems", ".env")
 dotenv.load_dotenv(path_env)
 
 OLLAMA_BASE_URL = f"http://localhost:{os.getenv('OLLAMA_PORT_HOST')}"
+score_threshold = 0.5  # For selection of relevant documents
 QDRANT_COLLECTION = "finma_docs"
 DOCUMENTS_DIR = os.path.join(
     "p07_llms/c04_rag_systems/s01_finma_rag_system", "documents"
@@ -58,7 +59,6 @@ if __name__ == "__main__":
             is_separator_regex=False,
         )
         docs = splitter.split_documents(raw_docs)
-
         # 2A.2. Build or use a Qdrant collection from these documents
         qdrant = QdrantVectorStore.from_documents(
             documents=docs,
@@ -76,10 +76,18 @@ if __name__ == "__main__":
             prefer_grpc=False,
             collection_name=QDRANT_COLLECTION,
         )
+    # Example: retrieve k=4 documents most similar to the query and print the first one
+    results = qdrant.similarity_search_with_score(
+        "What does the FINMA Risk Monitor say about upcoming risk?",
+        k=4,
+    )
+    doc, score = results[0]
+    print(f"Score: {score}\n")
+    print(doc)
 
-    # 4. Create the retriever object and a simple RAG chain
-    retriever = qdrant.as_retriever(search_kwargs={"k": 5})
-    # define prompt template
+    # 4. Create the qdrant retriever object and a simple RAG chain
+    retriever = qdrant.as_retriever(search_kwargs={"score_threshold": score_threshold})
+    # define prompt template that is always used
     prompt = ChatPromptTemplate.from_messages(
         [
             (
@@ -87,6 +95,7 @@ if __name__ == "__main__":
                 "You are a helpful assistant that answers questions about financial markets regulations "
                 "from FINMA (Switzerland’s independent financial-markets regulator). "
                 "Answer using ONLY the provided context (ALL are FINMA documents). "
+                "ALWAYS quote the source of the information. "
                 "If the answer is not in the context, say you don't know.",
             ),
             ("human", "Question: {input}\n\nContext:\n{context}"),
@@ -103,7 +112,7 @@ if __name__ == "__main__":
     result = rag_chain.invoke({"input": query})
 
     print("\nAnswer:\n", result["answer"])
-    print("\nSources (top matches):")
+    print("\nVector DB sources (top matches):")
     for d in result["context"]:
         src = d.metadata.get("source", "unknown")
         page = d.metadata.get("page", None)
