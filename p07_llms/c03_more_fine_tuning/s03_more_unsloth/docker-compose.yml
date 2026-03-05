@@ -3,8 +3,8 @@ services:
     image: unsloth/unsloth:latest
     container_name: gzh_unsloth
     ports:
-      - 8888:8888  # JupyterLab
-      - 2222:22  # SSH
+      - 07012:8888  # JupyterLab
+      - 07013:22  # SSH
     environment:
       - JUPYTER_PASSWORD=pass
       - CUDA_DEVICE_ORDER=PCI_BUS_ID
