@@ -27,8 +27,9 @@ from p07_llms.c04_rag_systems.s01_finma_rag_system.utils.document_loaders import
 # ----------------------------
 path_env = os.path.join("p07_llms/c04_rag_systems", ".env")
 dotenv.load_dotenv(path_env)
-
+# URLs
 OLLAMA_BASE_URL = f"http://localhost:{os.getenv('OLLAMA_PORT_HOST')}"
+# VectorStore settings
 score_threshold = 0.5  # For selection of relevant documents
 QDRANT_COLLECTION = "finma_docs"
 DOCUMENTS_DIR = os.path.join(

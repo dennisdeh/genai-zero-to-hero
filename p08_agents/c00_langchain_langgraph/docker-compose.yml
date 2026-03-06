@@ -1,0 +1,69 @@
+volumes:
+  ollama_data:
+  qdrant_data:
+
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: gzh-ollama_agents_rag
+    ports:
+      - ${OLLAMA_PORT_HOST}:${OLLAMA_PORT_CONT}
+    volumes:
+      - ollama_data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [ gpu ]
+    restart: unless-stopped
+
+  mariadb:
+    container_name: gzh-mariadb_agents_rag
+    image: mariadb:lts-ubi
+    command:
+      - --max_allowed_packet=107374182400  # 100GB
+      - --max_connections=20000
+      - --innodb_buffer_pool_size=256M
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD}
+      MARIADB_USER: ${MARIADB_USER}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD}
+    ports:
+      - ${MARIADB_PORT_HOST}:${MARIADB_PORT_CONT}
+    volumes:
+      # bind-mount the sql files that should be run while initialising
+      - ./init:/docker-entrypoint-initdb.d
+    healthcheck:  # define health-check that service is ready
+      interval: 2s
+      retries: 20
+      test:
+        [
+          "CMD",
+          "healthcheck.sh",
+          "--su-mysql",
+          "--connect",
+          "--innodb_initialized"
+        ]
+      timeout: 30s
+
+  adminer:
+    container_name: gzh-adminer_agents_rag
+    image: adminer:latest
+    environment:
+      ADMINER_DEFAULT_SERVER: gzh-mariadb
+    restart: always
+    ports:
+      - ${ADMINER_PORT_HOST}:${ADMINER_PORT_CONT}
+
+  qdrant:
+    image: qdrant/qdrant:master
+    container_name: gzh-qdrant_agents_rag
+    restart: unless-stopped
+    ports:
+      - ${QDRANT_PORT_HOST}:${QDRANT_PORT_CONT}
+    volumes:
+      - qdrant_data:/qdrant/storage
