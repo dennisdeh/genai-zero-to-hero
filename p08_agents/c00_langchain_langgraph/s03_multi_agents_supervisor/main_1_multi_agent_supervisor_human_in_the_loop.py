@@ -12,14 +12,13 @@ from qdrant_client import QdrantClient
 from langchain_qdrant import QdrantVectorStore
 from langchain_core.messages import BaseMessage, AIMessage, HumanMessage, SystemMessage
 from langchain.agents import create_agent
+from langchain.agents.middleware import HumanInTheLoopMiddleware
+from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph.message import add_messages
+from langgraph.types import Command
 from langchain_core.tools import tool
-from langgraph.graph import END, START, StateGraph
-from langgraph.prebuilt import ToolNode
 from langchain_ollama.embeddings import OllamaEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from sqlalchemy import create_engine, text
-from sqlalchemy.engine import Engine
 import dotenv
 from p07_llms.c01_running_llms.s02_langchain.utils.helpers import get_llm
 from p07_llms.c04_rag_systems.s01_finma_rag_system.utils.document_loaders import (
@@ -136,6 +135,12 @@ agent_math = create_agent(
         "You can use any of the following tools: "
         "sum (to add all numbers in a list), multiplication (to multiply all numbers in a list)."
     ),
+    middleware=[
+        HumanInTheLoopMiddleware(
+            interrupt_on={"tool_multiplication": True},
+            description_prefix="Validate the inputs",
+        ),
+    ],
 )
 agent_rag = create_agent(
     model=llm,
@@ -187,22 +192,58 @@ agent_supervisor = create_agent(
         "You are a helpful agent that answers questions about financial "
         "markets regulations and solves math problems. "
     ),
+    checkpointer=InMemorySaver(),
 )
 
 
 if __name__ == "__main__2":
     # set global variables
     os.environ["LLM_TO_USE"] = "ollama"
-    print("Multi-Agent app with a supervisor agent is initialised!")
+    print(
+        "Multi-Agent app with a supervisor agent and Human-in-the-Loop is initialised!"
+    )
     print(f"Using LLM backend: {os.getenv('LLM_TO_USE')}")
 
     # trace the output of the graph
-    str_query = "Tell me how many times mentions climate risks in their recent circular, add the numbers [2,3,4,5]"
-    messages = [
-        HumanMessage(content=str_query),
-    ]
-    for event in agent_supervisor.stream(
-        {"messages": messages},
-        stream_mode="values",
+    str_query = "Tell me how many times mentions climate risks in their recent circular, multiply the numbers [2,3,4,5]"
+    config = {"configurable": {"thread_id": "6"}}
+
+    interrupts = []
+    for step in agent_supervisor.stream(
+        {"messages": [HumanMessage(content=str_query)]},
+        config,
     ):
-        event["messages"][-1].pretty_print()
+        for update in step.values():
+            if isinstance(update, dict):
+                for message in update.get("messages", []):
+                    message.pretty_print()
+            else:
+                interrupt_ = update[0]
+                interrupts.append(interrupt_)
+                print(f"\nINTERRUPTED: {interrupt_.id}")
+
+    resume = {}
+    for interrupt_ in interrupts:
+        if interrupt_.id == "3da87be07718d50beff9123a8b485b97":
+            # Edit multiplication
+            edited_action = interrupt_.value["action_requests"][0].copy()
+            edited_action["args"]["values"] = "multiply the numbers [1,2,3]"
+            resume[interrupt_.id] = {
+                "decisions": [{"type": "edit", "edited_action": edited_action}]
+            }
+        else:
+            resume[interrupt_.id] = {"decisions": [{"type": "approve"}]}
+
+    interrupts = []
+    for step in agent_supervisor.stream(
+        Command(resume=resume),
+        config,
+    ):
+        for update in step.values():
+            if isinstance(update, dict):
+                for message in update.get("messages", []):
+                    message.pretty_print()
+            else:
+                interrupt_ = update[0]
+                interrupts.append(interrupt_)
+                print(f"\nINTERRUPTED: {interrupt_.id}")
