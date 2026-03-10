@@ -1,8 +1,11 @@
 """
-Demonstrate a multi-agent setup with a supervisor using LangGraph.
+Demonstrate a multi-agent setup with a supervisor and a human in the loop using
+the HumanInTheLoopMiddleware in LangGraph.
 
 We define two agents:
 - a math agent
+    - The use of tool_multiplication needs to be approved by the human in the loop
+    - Memory checkpointing is used to save the state of the math agent
 - a RAG Agent (vector search against a local VectorDB server)
 """
 
@@ -35,7 +38,7 @@ OLLAMA_BASE_URL = f"http://localhost:{os.getenv('OLLAMA_PORT_HOST')}"
 SQLALCHEMY_URL = f"mysql+pymysql://{os.getenv('MARIADB_USER')}:{os.getenv('MARIADB_PASSWORD')}@localhost:{os.getenv('MARIADB_PORT_HOST')}"
 QDRANT_URL = f"http://localhost:{os.getenv('QDRANT_PORT_HOST')}"
 # VectorStore settings
-k = 4  # For selection of relevant documents
+k = 5  # For selection of relevant documents
 QDRANT_COLLECTION = "finma_docs"
 DOCUMENTS_DIR = os.path.join(
     "p07_llms/c04_rag_systems/s01_finma_rag_system", "documents"
@@ -133,29 +136,12 @@ agent_math = create_agent(
         "You are a math agent."
         "You can only answer questions about math."
         "You can use any of the following tools: "
-        "sum (to add all numbers in a list), multiplication (to multiply all numbers in a list)."
-    ),
-    middleware=[
-        HumanInTheLoopMiddleware(
-            interrupt_on={"tool_multiplication": True},
-            description_prefix="Validate the inputs",
-        ),
-    ],
-)
-agent_rag = create_agent(
-    model=llm,
-    tools=[retrieve_context],
-    system_prompt=(
-        "You are an agent that answers questions about financial markets regulations "
-        "from FINMA (Switzerland’s independent financial-markets regulator). "
-        "Answer using ONLY the provided context (ALL are FINMA documents). "
-        "ALWAYS quote the source of the information. "
-        "If the answer is not in the context, say you don't know."
+        "sum (to add all numbers in a list), "
+        "multiplication (to multiply all numbers in a list)."
     ),
 )
 
 
-# wrap agents as tools (best practice)
 @tool
 def math(request: str) -> str:
     """
@@ -169,6 +155,51 @@ def math(request: str) -> str:
     """
     result = agent_math.invoke({"messages": [HumanMessage(content=request)]})
     return result["messages"][-1].content
+
+
+agent_query_rewrite = create_agent(
+    model=llm,
+    tools=None,
+    system_prompt=(
+        "You are an agent that improves the quality of the query that is to be submitted to a RAG agent. "
+    ),
+)
+
+
+@tool
+def query_rewrite(request: str) -> str:
+    """
+    Rewrites the given query string to improve the quality of the query.
+
+    Use this tool to rewrite the query before sending it to the RAG agent.
+
+    :param request: The input query string to be rewritten.
+    :type request: str
+    :return: The rewritten query string.
+    :rtype: str
+    """
+    result = agent_query_rewrite.invoke({"messages": [HumanMessage(content=request)]})
+    return result["messages"][-1].content
+
+
+agent_rag = create_agent(
+    model=llm,
+    tools=[retrieve_context, query_rewrite],
+    system_prompt=(
+        "You are an agent that answers questions about financial markets regulations "
+        "from FINMA (Switzerland’s independent financial-markets regulator). "
+        "Answer using ONLY the provided context (ALL are FINMA documents). "
+        "ALWAYS quote the source of the information. "
+        "If the answer is not in the context, say you don't know."
+        "You can use the following tool to rewrite the query: query_rewrite."
+    ),
+    checkpointer=InMemorySaver(),
+    middleware=[
+        HumanInTheLoopMiddleware(
+            interrupt_on={"query_rewrite": {"allowed_decisions": ["approve", "edit"]}},
+        ),
+    ],
+)
 
 
 @tool
@@ -191,27 +222,34 @@ agent_supervisor = create_agent(
     system_prompt=(
         "You are a helpful agent that answers questions about financial "
         "markets regulations and solves math problems. "
+        "Math problems are handed to the math agent."
+        "Questions about FINMA documents are handed to the finma_rag agent."
     ),
     checkpointer=InMemorySaver(),
 )
 
 
-if __name__ == "__main__2":
+if __name__ == "__main__":
     # set global variables
     os.environ["LLM_TO_USE"] = "ollama"
-    print(
-        "Multi-Agent app with a supervisor agent and Human-in-the-Loop is initialised!"
-    )
+    print("Multi-Agent app with a supervisor agent and HITL is initialised!")
     print(f"Using LLM backend: {os.getenv('LLM_TO_USE')}")
+    debug = True
+
+    # draw the graph
+    with open(
+        "p08_agents/c00_langchain_langgraph/s03_multi_agents_supervisor/graph_1_multi_agent_supervisor.png",
+        "wb",
+    ) as f:
+        f.write(agent_supervisor.get_graph().draw_mermaid_png())
 
     # trace the output of the graph
-    str_query = "Tell me how many times mentions climate risks in their recent circular, multiply the numbers [2,3,4,5]"
-    config = {"configurable": {"thread_id": "6"}}
+    str_query = "Tell me how many times mentions climate risks in their recent circular, multiply the numbers [2,3,4,5]. Improve the RAG query before sending it to the RAG agent."
+    config = {"configurable": {"thread_id": "1"}}
 
     interrupts = []
     for step in agent_supervisor.stream(
-        {"messages": [HumanMessage(content=str_query)]},
-        config,
+        {"messages": [HumanMessage(content=str_query)]}, config=config, debug=debug
     ):
         for update in step.values():
             if isinstance(update, dict):
@@ -223,27 +261,43 @@ if __name__ == "__main__2":
                 print(f"\nINTERRUPTED: {interrupt_.id}")
 
     resume = {}
-    for interrupt_ in interrupts:
-        if interrupt_.id == "3da87be07718d50beff9123a8b485b97":
-            # Edit multiplication
-            edited_action = interrupt_.value["action_requests"][0].copy()
-            edited_action["args"]["values"] = "multiply the numbers [1,2,3]"
-            resume[interrupt_.id] = {
-                "decisions": [{"type": "edit", "edited_action": edited_action}]
-            }
-        else:
-            resume[interrupt_.id] = {"decisions": [{"type": "approve"}]}
+    if len(interrupts) > 0:
+        resume["decisions"] = list()
+        for interrupt_ in interrupts:
+            print(interrupt_.value["action_requests"][0]["description"])
+            approval = input("Approve or edit? (y/edit): ")
+            if approval == "y":
+                resume["decisions"].append(
+                    {"type": "approve", "message": "Approved by user."}
+                )
+            elif approval == "edit":
+                edited_action = {}
+                str_new_query = input("Enter revised query: ")
+
+                # set up the structure of the edited action
+                edited_action["name"] = "query_rewrite"
+                edited_action["args"] = {}
+                edited_action["args"]["request"] = str_new_query
+
+                resume["decisions"].append(
+                    {
+                        "type": "edit",
+                        "edited_action": edited_action,
+                    }
+                )
+            else:
+                raise ValueError("Invalid input. Please enter 'y' or 'edit'.")
 
     interrupts = []
     for step in agent_supervisor.stream(
-        Command(resume=resume),
-        config,
+        Command(resume=resume), config=config, debug=debug
     ):
         for update in step.values():
             if isinstance(update, dict):
                 for message in update.get("messages", []):
                     message.pretty_print()
-            else:
+            elif update is not None:
+                print(update)
                 interrupt_ = update[0]
                 interrupts.append(interrupt_)
                 print(f"\nINTERRUPTED: {interrupt_.id}")
