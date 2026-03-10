@@ -182,16 +182,13 @@ def query_rewrite(request: str) -> str:
     return result["messages"][-1].content
 
 
-agent_rag = create_agent(
+agent_rag_rewriter = create_agent(
     model=llm,
-    tools=[retrieve_context, query_rewrite],
+    tools=[query_rewrite],
     system_prompt=(
-        "You are an agent that answers questions about financial markets regulations "
-        "from FINMA (Switzerland’s independent financial-markets regulator). "
-        "Answer using ONLY the provided context (ALL are FINMA documents). "
-        "ALWAYS quote the source of the information. "
-        "If the answer is not in the context, say you don't know."
-        "You can use the following tool to improve the query: query_rewrite."
+        "You improve user queries before retrieval. "
+        "You MUST call the query_rewrite tool exactly once for every request. "
+        "Do not answer the user question yourself."
     ),
     checkpointer=InMemorySaver(),
     middleware=[
@@ -199,6 +196,21 @@ agent_rag = create_agent(
             interrupt_on={"query_rewrite": {"allowed_decisions": ["approve", "edit"]}},
         ),
     ],
+)
+
+
+agent_rag_answer = create_agent(
+    model=llm,
+    tools=[retrieve_context],
+    system_prompt=(
+        "You are an agent that answers questions about financial markets regulations "
+        "from FINMA (Switzerland’s independent financial-markets regulator). "
+        "Use retrieve_context to fetch relevant FINMA documents for the query you receive. "
+        "Answer using ONLY the provided context (ALL are FINMA documents). "
+        "ALWAYS quote the source of the information. "
+        "If the answer is not in the context, say you don't know."
+    ),
+    checkpointer=InMemorySaver(),
 )
 
 
@@ -211,7 +223,12 @@ def finma_rag(request: str) -> str:
 
     Input: natual language question.
     """
-    result = agent_rag.invoke({"messages": [HumanMessage(content=request)]})
+    rewritten = agent_rag_rewriter.invoke({"messages": [HumanMessage(content=request)]})
+    rewritten_query = rewritten["messages"][-1].content
+
+    result = agent_rag_answer.invoke(
+        {"messages": [HumanMessage(content=rewritten_query)]}
+    )
     return result["messages"][-1].content
 
 
@@ -244,7 +261,7 @@ if __name__ == "__main__":
         f.write(agent_supervisor.get_graph().draw_mermaid_png())
 
     # trace the output of the graph
-    str_query = "Tell me how many times mentions climate risks in their recent circular, multiply the numbers [2,3,4,5]. Improve the RAG query before sending it to the RAG agent."
+    str_query = "Tell me how many times FINMA mentions financial risks in their recent circular, multiply the numbers [2,3,4,5]."
     config = {"configurable": {"thread_id": "1"}}
 
     interrupts = []
