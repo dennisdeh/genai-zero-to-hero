@@ -191,7 +191,7 @@ agent_rag = create_agent(
         "Answer using ONLY the provided context (ALL are FINMA documents). "
         "ALWAYS quote the source of the information. "
         "If the answer is not in the context, say you don't know."
-        "You can use the following tool to rewrite the query: query_rewrite."
+        "You can use the following tool to improve the query: query_rewrite."
     ),
     checkpointer=InMemorySaver(),
     middleware=[
