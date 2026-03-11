@@ -51,6 +51,10 @@ DOCUMENTS_DIR = os.path.join(
 )
 
 
+class AgentState(TypedDict):
+    messages: Annotated[Sequence[BaseMessage], add_messages]
+
+
 # 1. Set up Ollama LLM and embedding objects
 llm = get_llm(model="qwen3:8b", use="ollama", base_url_ollama=OLLAMA_BASE_URL)
 embedding = OllamaEmbeddings(
@@ -93,8 +97,9 @@ else:
     )
 
 
-class AgentState(TypedDict):
-    messages: Annotated[Sequence[BaseMessage], add_messages]
+# ----------------------------
+# Agents and tools
+# ----------------------------
 
 
 @tool
@@ -144,7 +149,6 @@ def retrieve_context(query: str):
     return retrieve_context_data(query)
 
 
-# Define sub-agents
 agent_math = create_agent(
     model=llm,
     tools=[tool_sum, tool_multiplication],
@@ -242,8 +246,10 @@ def finma_rag(request: str) -> str:
 
     Input: natual language question.
     """
+    # rewrite the query using the rag rewriter
     rewritten = agent_rag_rewriter.invoke({"messages": [HumanMessage(content=request)]})
 
+    # extract the latest rewritten query from the messages
     rewritten_query = None
     for message in reversed(rewritten["messages"]):
         if isinstance(message, ToolMessage) and message.name == "query_rewrite":
@@ -251,10 +257,14 @@ def finma_rag(request: str) -> str:
             break
 
     if rewritten_query is None:
-        raise ValueError("query_rewrite did not return a rewritten query when it was expected.")
+        raise ValueError(
+            "query_rewrite did not return a rewritten query when it was expected."
+        )
 
+    # get context for the rewritten query
     retrieved_context, _ = retrieve_context_data(rewritten_query)
 
+    # answer the rewritten query using the retrieved context
     answer = llm.invoke(
         [
             SystemMessage(
@@ -291,16 +301,56 @@ agent_supervisor = create_agent(
 )
 
 
+def handle_interrupt(interrupts: list):
+    resume = {}
+    resume["decisions"] = list()
+    for interrupt_ in interrupts:
+        print(interrupt_.value["action_requests"][0]["description"])
+        approval = input("Approve or edit? (y/edit): ")
+        if approval == "y":
+            resume["decisions"].append(
+                {"type": "approve", "message": "Approved by user."}
+            )
+        elif approval == "edit":
+            edited_action = {}
+            str_new_query = input("Enter revised query: ")
+
+            # set up the structure of the edited action
+            edited_action["name"] = "query_rewrite"
+            edited_action["args"] = {}
+            edited_action["args"]["request"] = str_new_query
+
+            resume["decisions"].append(
+                {
+                    "type": "edit",
+                    "edited_action": edited_action,
+                }
+            )
+        else:
+            raise ValueError("Invalid input. Please enter 'y' or 'edit'.")
+    return resume
+
+
 if __name__ == "__main__":
     # set global variables
     os.environ["LLM_TO_USE"] = "ollama"
     print("Multi-Agent app with a supervisor agent and HITL is initialised!")
     print(f"Using LLM backend: {os.getenv('LLM_TO_USE')}")
-    debug = True
+    debug = False
 
-    # draw the graph
+    # draw the graphs
     with open(
-        "p08_agents/c00_langchain_langgraph/s03_multi_agents_supervisor/graph_1_multi_agent_supervisor.png",
+        "p08_agents/c00_langchain_langgraph/s03_multi_agents_supervisor/graph_1_multi_agent_supervisor_rag_answer.png",
+        "wb",
+    ) as f:
+        f.write(agent_rag_answer.get_graph().draw_mermaid_png())
+    with open(
+        "p08_agents/c00_langchain_langgraph/s03_multi_agents_supervisor/graph_1_multi_agent_supervisor_math.png",
+        "wb",
+    ) as f:
+        f.write(agent_math.get_graph().draw_mermaid_png())
+    with open(
+        "p08_agents/c00_langchain_langgraph/s03_multi_agents_supervisor/graph_1_multi_agent_supervisor_supervisor.png",
         "wb",
     ) as f:
         f.write(agent_supervisor.get_graph().draw_mermaid_png())
@@ -322,44 +372,21 @@ if __name__ == "__main__":
                 interrupts.append(interrupt_)
                 print(f"\nINTERRUPTED: {interrupt_.id}")
 
-    resume = {}
-    if len(interrupts) > 0:
-        resume["decisions"] = list()
-        for interrupt_ in interrupts:
-            print(interrupt_.value["action_requests"][0]["description"])
-            approval = input("Approve or edit? (y/edit): ")
-            if approval == "y":
-                resume["decisions"].append(
-                    {"type": "approve", "message": "Approved by user."}
-                )
-            elif approval == "edit":
-                edited_action = {}
-                str_new_query = input("Enter revised query: ")
+    while len(interrupts) > 0:
+        resume = handle_interrupt(interrupts)
 
-                # set up the structure of the edited action
-                edited_action["name"] = "query_rewrite"
-                edited_action["args"] = {}
-                edited_action["args"]["request"] = str_new_query
-
-                resume["decisions"].append(
-                    {
-                        "type": "edit",
-                        "edited_action": edited_action,
-                    }
-                )
-            else:
-                raise ValueError("Invalid input. Please enter 'y' or 'edit'.")
-
-    interrupts = []
-    for step in agent_supervisor.stream(
-        Command(resume=resume), config=config, debug=debug
-    ):
-        for update in step.values():
-            if isinstance(update, dict):
-                for message in update.get("messages", []):
-                    message.pretty_print()
-            elif update is not None:
-                print(update)
-                interrupt_ = update[0]
-                interrupts.append(interrupt_)
-                print(f"\nINTERRUPTED: {interrupt_.id}")
+        interrupts = []
+        for step in agent_supervisor.stream(
+            Command(resume=resume), config=config, debug=debug
+        ):
+            for update in step.values():
+                if isinstance(update, dict):
+                    for message in update.get("messages", []):
+                        message.pretty_print()
+                elif update is not None:
+                    interrupt_ = update[0]
+                    interrupts.append(interrupt_)
+                    print(f"\nINTERRUPTED: {interrupt_.id}")
+                else:
+                    print("No update")
+                    break
