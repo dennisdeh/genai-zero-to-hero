@@ -13,7 +13,13 @@ import os
 from typing import TypedDict, Annotated, Sequence
 from qdrant_client import QdrantClient
 from langchain_qdrant import QdrantVectorStore
-from langchain_core.messages import BaseMessage, AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import (
+    BaseMessage,
+    AIMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+)
 from langchain.agents import create_agent
 from langchain.agents.middleware import HumanInTheLoopMiddleware
 from langgraph.checkpoint.memory import InMemorySaver
@@ -113,6 +119,20 @@ def tool_multiplication(values: list[float]) -> AgentState:
     return result
 
 
+def retrieve_context_data(query: str) -> tuple[str, list]:
+    """
+    Plain Python helper for retrieval.
+
+    This separates retrieval business logic from the LangChain tool wrapper so the
+    function can be safely reused from normal Python code and from agents/tools.
+    """
+    retrieved_docs = qdrant.similarity_search(query, k=k)
+    serialised = "\n\n".join(
+        f"Source: {doc.metadata}\nContent: {doc.page_content}" for doc in retrieved_docs
+    )
+    return serialised, retrieved_docs
+
+
 @tool(response_format="content_and_artifact")
 def retrieve_context(query: str):
     """
@@ -121,11 +141,7 @@ def retrieve_context(query: str):
     :param query: Query string for context retrieval.
     :return: Serialized context and retrieved documents.
     """
-    retrieved_docs = qdrant.similarity_search(query, k=k)
-    serialised = "\n\n".join(
-        f"Source: {doc.metadata}\nContent: {doc.page_content}" for doc in retrieved_docs
-    )
-    return serialised, retrieved_docs
+    return retrieve_context_data(query)
 
 
 # Define sub-agents
@@ -161,7 +177,10 @@ agent_query_rewrite = create_agent(
     model=llm,
     tools=None,
     system_prompt=(
-        "You are an agent that improves the quality of the query that is to be submitted to a RAG agent. "
+        "You improve the quality of a query for retrieval. "
+        "Return only the rewritten query as plain text. "
+        "Do not explain your reasoning. "
+        "Do not answer the question."
     ),
 )
 
@@ -224,12 +243,38 @@ def finma_rag(request: str) -> str:
     Input: natual language question.
     """
     rewritten = agent_rag_rewriter.invoke({"messages": [HumanMessage(content=request)]})
-    rewritten_query = rewritten["messages"][-1].content
 
-    result = agent_rag_answer.invoke(
-        {"messages": [HumanMessage(content=rewritten_query)]}
+    rewritten_query = None
+    for message in reversed(rewritten["messages"]):
+        if isinstance(message, ToolMessage) and message.name == "query_rewrite":
+            rewritten_query = message.content
+            break
+
+    if rewritten_query is None:
+        raise ValueError("query_rewrite did not return a rewritten query when it was expected.")
+
+    retrieved_context, _ = retrieve_context_data(rewritten_query)
+
+    answer = llm.invoke(
+        [
+            SystemMessage(
+                content=(
+                    "You are an agent that answers questions about financial markets regulations "
+                    "from FINMA (Switzerland’s independent financial-markets regulator). "
+                    "Answer using ONLY the provided context (ALL are FINMA documents). "
+                    "ALWAYS quote the source of the information. "
+                    "If the answer is not in the context, say you don't know."
+                )
+            ),
+            HumanMessage(
+                content=(
+                    f"User request: {rewritten_query}\n\n"
+                    f"Retrieved context:\n{retrieved_context}"
+                )
+            ),
+        ]
     )
-    return result["messages"][-1].content
+    return answer.content
 
 
 # Define supervisor agent
