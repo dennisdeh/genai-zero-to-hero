@@ -7,15 +7,19 @@ We define two agents:
     - The use of tool_multiplication needs to be approved by the human in the loop
     - Memory checkpointing is used to save the state of the math agent
 - a RAG Agent (vector search against a local VectorDB server)
+
+The workflow for the interrupt is:
+    - user asks the original query
+    - query_rewrite is interrupted
+    - you edit it or approve it
+    - the graph resumes, tied to the exact interrupt IDs
+    - nested agent/tool execution restarts from the stored state
 """
 
 import os
-from typing import TypedDict, Annotated, Sequence
 from qdrant_client import QdrantClient
 from langchain_qdrant import QdrantVectorStore
 from langchain_core.messages import (
-    BaseMessage,
-    AIMessage,
     HumanMessage,
     SystemMessage,
     ToolMessage,
@@ -23,7 +27,6 @@ from langchain_core.messages import (
 from langchain.agents import create_agent
 from langchain.agents.middleware import HumanInTheLoopMiddleware
 from langgraph.checkpoint.memory import InMemorySaver
-from langgraph.graph.message import add_messages
 from langgraph.types import Command
 from langchain_core.tools import tool
 from langchain_ollama.embeddings import OllamaEmbeddings
@@ -49,11 +52,6 @@ QDRANT_COLLECTION = "finma_docs"
 DOCUMENTS_DIR = os.path.join(
     "p07_llms/c04_rag_systems/s01_finma_rag_system", "documents"
 )
-
-
-class AgentState(TypedDict):
-    messages: Annotated[Sequence[BaseMessage], add_messages]
-
 
 # 1. Set up Ollama LLM and embedding objects
 llm = get_llm(model="qwen3:8b", use="ollama", base_url_ollama=OLLAMA_BASE_URL)
@@ -103,7 +101,7 @@ else:
 
 
 @tool
-def tool_sum(values: list[float]) -> AgentState:
+def tool_sum(values: list[float]) -> float:
     """
     Sums all the numbers in the list 'values' and returns the result.
     """
@@ -113,7 +111,7 @@ def tool_sum(values: list[float]) -> AgentState:
 
 
 @tool
-def tool_multiplication(values: list[float]) -> AgentState:
+def tool_multiplication(values: list[float]) -> float:
     """
     Multiplies all the numbers in the list 'values' and returns the result.
     """
@@ -210,10 +208,11 @@ agent_rag_rewriter = create_agent(
     tools=[query_rewrite],
     system_prompt=(
         "You improve user queries before retrieval. "
-        "You MUST call the query_rewrite tool exactly once for every request. "
-        "Do not answer the user question yourself."
+        "You MUST call the query_rewrite tool exactly once for the ORIGINAL user query. "
+        "After the tool returns, do not call any tool again. "
+        "Return the rewritten query and do not answer the user question yourself."
     ),
-    checkpointer=InMemorySaver(),
+    checkpointer=InMemorySaver(),  # lets the interrupted agent_rag_rewriter resume from its own saved state
     middleware=[
         HumanInTheLoopMiddleware(
             interrupt_on={"query_rewrite": {"allowed_decisions": ["approve", "edit"]}},
@@ -233,7 +232,7 @@ agent_rag_answer = create_agent(
         "ALWAYS quote the source of the information. "
         "If the answer is not in the context, say you don't know."
     ),
-    checkpointer=InMemorySaver(),
+    # checkpointer=InMemorySaver(),
 )
 
 
@@ -294,38 +293,48 @@ agent_supervisor = create_agent(
     system_prompt=(
         "You are a helpful agent that answers questions about financial "
         "markets regulations and solves math problems. "
-        "Math problems are handed to the math agent."
-        "Questions about FINMA documents are handed to the finma_rag agent."
+        "Math problems are handed to the math tool."
+        "Questions about FINMA documents are handed to the finma_rag tool."
+        "Only call the finma_rag tool once"
+        "Format the final output in markdown docstrings."
     ),
     checkpointer=InMemorySaver(),
 )
 
 
 def handle_interrupt(interrupts: list):
+    """
+    Handle all interrupts and returns a resume dictionary
+    where the keys are the interrupt ids and the values are the decisions.
+
+    :param interrupts:
+    :return: resume dictionary
+    """
     resume = {}
-    resume["decisions"] = list()
     for interrupt_ in interrupts:
         print(interrupt_.value["action_requests"][0]["description"])
         approval = input("Approve or edit? (y/edit): ")
+
         if approval == "y":
-            resume["decisions"].append(
-                {"type": "approve", "message": "Approved by user."}
-            )
+            resume[interrupt_.id] = {
+                "decisions": [{"type": "approve", "message": "Approved by user."}]
+            }
         elif approval == "edit":
-            edited_action = {}
             str_new_query = input("Enter revised query: ")
 
-            # set up the structure of the edited action
-            edited_action["name"] = "query_rewrite"
-            edited_action["args"] = {}
+            action_request = interrupt_.value["action_requests"][0]
+            edited_action = action_request.copy()
+            edited_action["args"] = action_request["args"].copy()
             edited_action["args"]["request"] = str_new_query
 
-            resume["decisions"].append(
-                {
-                    "type": "edit",
-                    "edited_action": edited_action,
-                }
-            )
+            resume[interrupt_.id] = {
+                "decisions": [
+                    {
+                        "type": "edit",
+                        "edited_action": edited_action,
+                    }
+                ]
+            }
         else:
             raise ValueError("Invalid input. Please enter 'y' or 'edit'.")
     return resume
