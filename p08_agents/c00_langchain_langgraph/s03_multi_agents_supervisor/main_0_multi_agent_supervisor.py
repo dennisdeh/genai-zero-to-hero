@@ -7,12 +7,10 @@ We define two agents:
 """
 
 import os
-from typing import TypedDict, Annotated, Sequence
 from qdrant_client import QdrantClient
 from langchain_qdrant import QdrantVectorStore
-from langchain_core.messages import BaseMessage, AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage
 from langchain.agents import create_agent
-from langgraph.graph.message import add_messages
 from langchain_core.tools import tool
 from langchain_ollama.embeddings import OllamaEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -37,7 +35,6 @@ QDRANT_COLLECTION = "finma_docs"
 DOCUMENTS_DIR = os.path.join(
     "p07_llms/c04_rag_systems/s01_finma_rag_system", "documents"
 )
-
 
 # 1. Set up Ollama LLM and embedding objects
 llm = get_llm(model="qwen3:8b", use="ollama", base_url_ollama=OLLAMA_BASE_URL)
@@ -81,12 +78,13 @@ else:
     )
 
 
-class AgentState(TypedDict):
-    messages: Annotated[Sequence[BaseMessage], add_messages]
+# ----------------------------
+# Agents and tools
+# ----------------------------
 
 
 @tool
-def tool_sum(values: list[float]) -> AgentState:
+def tool_sum(values: list[float]) -> float:
     """
     Sums all the numbers in the list 'values' and returns the result.
     """
@@ -96,7 +94,7 @@ def tool_sum(values: list[float]) -> AgentState:
 
 
 @tool
-def tool_multiplication(values: list[float]) -> AgentState:
+def tool_multiplication(values: list[float]) -> float:
     """
     Multiplies all the numbers in the list 'values' and returns the result.
     """

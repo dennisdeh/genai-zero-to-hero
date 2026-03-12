@@ -12,7 +12,7 @@ def get_llm(
     model: Union[str, None] = None,
     use: Literal["openai", "ollama"] = "ollama",
     base_url_ollama: str = "http://localhost:07011",
-):
+) -> Union[ChatOpenAI, ChatOllama]:
     """
     Initialise and return the selected LLM. If environment variables are set,
     they will be used to override the model and base URL.
