@@ -9,14 +9,19 @@ We define two agents:
 - a RAG Agent (vector search against a local VectorDB server)
 
 The workflow for the interrupt is:
-    - user asks the original query
-    - query_rewrite is interrupted
-    - you edit it or approve it
-    - the graph resumes, tied to the exact interrupt IDs
-    - nested agent/tool execution restarts from the stored state
+finma_rag is called
+agent_rag_rewriter calls query_rewrite
+HITL interrupts once
+you approve/edit
+agent_rag_rewriter resumes from the interrupted point
+rewritten query is returned
+retrieval + answer continue
+no second query_rewrite interrupt
 """
 
 import os
+
+from langchain_core.runnables import RunnableConfig
 from qdrant_client import QdrantClient
 from langchain_qdrant import QdrantVectorStore
 from langchain_core.messages import (
@@ -25,7 +30,10 @@ from langchain_core.messages import (
     ToolMessage,
 )
 from langchain.agents import create_agent
-from langchain.agents.middleware import HumanInTheLoopMiddleware
+from langchain.agents.middleware import (
+    HumanInTheLoopMiddleware,
+    ToolCallLimitMiddleware,
+)
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
 from langchain_core.tools import tool
@@ -179,10 +187,12 @@ agent_query_rewrite = create_agent(
     model=llm,
     tools=None,
     system_prompt=(
-        "You improve the quality of a query for retrieval. "
-        "Return only the rewritten query as plain text. "
-        "Do not explain your reasoning. "
-        "Do not answer the question."
+        "You lightly normalise a retrieval query. "
+        "Preserve the user's meaning exactly. "
+        "Only fix spelling, grammar, punctuation, and whitespace. "
+        "Do not broaden, narrow, reinterpret, or replace the topic. "
+        "Do not compare against any earlier query. "
+        "Return only the cleaned query as plain text."
     ),
 )
 
@@ -207,15 +217,23 @@ agent_rag_rewriter = create_agent(
     model=llm,
     tools=[query_rewrite],
     system_prompt=(
-        "You improve user queries before retrieval. "
-        "You MUST call the query_rewrite tool exactly once for the ORIGINAL user query. "
+        "You prepare a query for retrieval. "
+        "Call query_rewrite exactly once on the current query you receive. "
+        "If the human edited the query, treat that edited text as the authoritative current query. "
+        "Do not compare it against the original query. "
         "After the tool returns, do not call any tool again. "
-        "Return the rewritten query and do not answer the user question yourself."
+        "Return only the final cleaned query as plain text."
     ),
     checkpointer=InMemorySaver(),  # lets the interrupted agent_rag_rewriter resume from its own saved state
     middleware=[
         HumanInTheLoopMiddleware(
             interrupt_on={"query_rewrite": {"allowed_decisions": ["approve", "edit"]}},
+        ),
+        ToolCallLimitMiddleware(
+            tool_name="query_rewrite",
+            run_limit=1,
+            thread_limit=1,
+            exit_behavior="end",
         ),
     ],
 )
@@ -237,7 +255,7 @@ agent_rag_answer = create_agent(
 
 
 @tool
-def finma_rag(request: str) -> str:
+def finma_rag(request: str, config: RunnableConfig) -> str:
     """
     Get the answer to the query from the RAG agent.
 
@@ -245,25 +263,29 @@ def finma_rag(request: str) -> str:
 
     Input: natual language question.
     """
-    # rewrite the query using the rag rewriter
-    rewritten = agent_rag_rewriter.invoke({"messages": [HumanMessage(content=request)]})
+    rewritten = agent_rag_rewriter.invoke(
+        {"messages": [HumanMessage(content=request)]},
+        config=config,
+    )
 
-    # extract the latest rewritten query from the messages
     rewritten_query = None
-    for message in reversed(rewritten["messages"]):
+    for message in rewritten["messages"]:
         if isinstance(message, ToolMessage) and message.name == "query_rewrite":
             rewritten_query = message.content
             break
 
     if rewritten_query is None:
+        final_message = rewritten["messages"][-1]
+        if getattr(final_message, "content", None):
+            rewritten_query = final_message.content
+
+    if not rewritten_query:
         raise ValueError(
             "query_rewrite did not return a rewritten query when it was expected."
         )
 
-    # get context for the rewritten query
     retrieved_context, _ = retrieve_context_data(rewritten_query)
 
-    # answer the rewritten query using the retrieved context
     answer = llm.invoke(
         [
             SystemMessage(
@@ -293,9 +315,9 @@ agent_supervisor = create_agent(
     system_prompt=(
         "You are a helpful agent that answers questions about financial "
         "markets regulations and solves math problems. "
-        "Math problems are handed to the math tool."
-        "Questions about FINMA documents are handed to the finma_rag tool."
-        "Only call the finma_rag tool once"
+        "Math problems are handed to the math tool. "
+        "Questions about FINMA documents are handed to the finma_rag tool. "
+        "If the human edited the finma_rag tool query, treat that edited text as the authoritative current query. "
         "Format the final output in markdown docstrings."
     ),
     checkpointer=InMemorySaver(),
