@@ -1,5 +1,12 @@
 """
-Demonstrate a simple stock analysis ReAct agent using LangGraph.
+Demonstrate a simple RAG agent that implements adapts the simple RAG over local files (PDF + Word .docx)
+in p07_llms/c04_rag_systems/s01_finma_rag_system using the following components:
+- Ollama (LLM + embeddings)
+- Qdrant (vector DB)
+- LangGraph Agent
+
+The documents folder should contain PDFs and Word .docx files. In the example, circulars
+from FINMA (https://www.finma.ch/en/documents/) are used.
 """
 
 import os

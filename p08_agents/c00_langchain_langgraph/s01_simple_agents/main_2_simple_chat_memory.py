@@ -1,5 +1,5 @@
 """
-Demonstrate a simple chat agent using LangGraph - with memory but no tools
+Demonstrate a simple chat agent using LangGraph - with short-term memory, but no tools
 """
 
 import os
@@ -29,7 +29,7 @@ if __name__ == "__main__":
     # set global variables
     os.environ["LLM_TO_USE"] = "ollama"
 
-    print("Simple agent with memory, but no tools initialised!")
+    print("Simple agent with short-term memory, but no tools initialised!")
     print(f"Using LLM backend: {os.getenv('LLM_TO_USE')}")
 
     # initialise building the language graph
