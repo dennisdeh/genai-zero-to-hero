@@ -1,0 +1,29 @@
+# The HorizontalPodAutoscaler adjusts the number of replicas of the Deployment based on the observed
+# CPU utilisation (relative to the CPU *request*). Requires the metrics-server in the cluster.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: iris-api
+  labels:
+    app.kubernetes.io/name: iris-api
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: iris-api
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60   # add pods when the average CPU usage exceeds 60 % of the request
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 120   # wait 2 minutes before removing pods (avoids flapping)
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60

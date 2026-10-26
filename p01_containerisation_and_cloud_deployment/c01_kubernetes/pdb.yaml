@@ -1,0 +1,13 @@
+# The PodDisruptionBudget keeps at least one pod running during voluntary disruptions such as node drains
+# or cluster upgrades.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: iris-api
+  labels:
+    app.kubernetes.io/name: iris-api
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: iris-api

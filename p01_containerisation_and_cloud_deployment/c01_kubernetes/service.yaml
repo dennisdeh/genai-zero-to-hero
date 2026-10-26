@@ -1,0 +1,16 @@
+# The Service gives the pods a stable virtual IP and DNS name (iris-api.gzh.svc.cluster.local) and
+# load-balances requests across all READY pods that match the selector.
+apiVersion: v1
+kind: Service
+metadata:
+  name: iris-api
+  labels:
+    app.kubernetes.io/name: iris-api
+spec:
+  type: ClusterIP                  # reachable inside the cluster; use port-forward, an Ingress or LoadBalancer from outside
+  selector:
+    app.kubernetes.io/name: iris-api
+  ports:
+    - name: http
+      port: 80                     # port of the Service
+      targetPort: http             # named container port (5000)

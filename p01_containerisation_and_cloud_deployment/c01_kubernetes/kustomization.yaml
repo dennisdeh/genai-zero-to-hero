@@ -1,0 +1,24 @@
+# Kustomize bundles the manifests, so they can be applied with a single command:
+#   kubectl apply -k p01_containerisation_and_cloud_deployment/c01_kubernetes
+# It can also patch them per environment (overlays) without templates, e.g. a different image tag.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: gzh                     # set on all resources below
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: genai-zero-to-hero
+    includeSelectors: false        # do not change the (immutable) selectors
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - deployment.yaml
+  - service.yaml
+  - hpa.yaml
+  - pdb.yaml
+
+images:
+  - name: gzh-iris-api             # replace the image reference in the Deployment, e.g. with a registry path
+    newTag: "0.1.0"

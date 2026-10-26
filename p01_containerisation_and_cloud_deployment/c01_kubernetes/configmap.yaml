@@ -1,0 +1,12 @@
+# Non-secret configuration of the API, injected into the containers as environment variables.
+# (Secrets such as API keys belong in a Secret, ideally synced from an external secret manager.)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: iris-api-config
+  labels:
+    app.kubernetes.io/name: iris-api
+data:
+  LOG_LEVEL: "INFO"
+  MAX_BATCH_SIZE: "1000"
+  MODEL_DIR: "/opt/model"

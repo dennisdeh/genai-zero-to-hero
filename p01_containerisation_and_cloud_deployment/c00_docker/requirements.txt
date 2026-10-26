@@ -1,0 +1,12 @@
+# Runtime dependencies of the containerised iris API (p00_fundamentals/c02_fastapi).
+# Lower bounds only, to keep the examples current. For reproducible production images, pin exact versions
+# (e.g. generated with `pip freeze` or `pip-compile`) - in particular scikit-learn, because the model
+# pickle must be loaded with the same version it was trained with.
+fastapi>=0.115
+uvicorn>=0.30
+pydantic>=2.7
+scikit-learn>=1.5
+joblib>=1.4
+pandas>=2.2
+numpy>=2.0
+requests>=2.32

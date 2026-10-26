@@ -1,0 +1,85 @@
+# The Deployment keeps the desired number of identical pods (replicas) of the API running and performs
+# rolling updates when the pod template (e.g. the image tag) changes.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: iris-api
+  labels:
+    app.kubernetes.io/name: iris-api
+spec:
+  replicas: 2                      # initial value; the HorizontalPodAutoscaler takes over afterwards
+  revisionHistoryLimit: 5          # old ReplicaSets kept for `kubectl rollout undo`
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: iris-api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1                  # at most one extra pod during an update
+      maxUnavailable: 0            # never go below the desired number of ready pods
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: iris-api
+    spec:
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true         # refuse to start if the image would run as root
+        runAsUser: 10001           # the user created in the Dockerfile
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: api
+          image: gzh-iris-api:0.1.0
+          imagePullPolicy: IfNotPresent   # use the image loaded into kind/minikube, do not pull
+          ports:
+            - name: http
+              containerPort: 5000
+          envFrom:
+            - configMapRef:
+                name: iris-api-config
+          # resources: requests are reserved for scheduling (and the HPA percentage refers to them),
+          # limits are enforced (CPU is throttled, exceeding the memory limit kills the container)
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          # startup probe: gives the application time to start (e.g. to load a large model);
+          # liveness and readiness probes only begin after it has succeeded
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 2
+            failureThreshold: 30     # up to 60 s to start
+          # liveness probe: restart the container if the process hangs
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          # readiness probe: only route traffic to the pod while the model is loaded
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp                # writable scratch space, since the root file system is read-only
+          emptyDir: {}

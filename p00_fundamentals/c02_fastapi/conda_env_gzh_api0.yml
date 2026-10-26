@@ -1,0 +1,17 @@
+name: gzh_api0
+channels:
+  - conda-forge
+dependencies:
+  - python=3.13
+  - pip
+  - numpy
+  - pandas
+  - scikit-learn
+  - joblib
+  - fastapi
+  - uvicorn
+  - pydantic
+  - requests
+  - httpx
+  - pytest
+  - pyyaml
