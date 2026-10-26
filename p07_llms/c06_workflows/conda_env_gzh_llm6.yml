@@ -1,0 +1,12 @@
+name: gzh_llm6
+channels:
+  - conda-forge
+dependencies:
+  - python=3.13
+  - pip
+  - pydantic
+  - requests
+  - langchain-core
+  - langchain-ollama
+  - langchain-openai
+  - langgraph

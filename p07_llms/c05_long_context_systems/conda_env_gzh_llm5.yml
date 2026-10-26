@@ -1,0 +1,12 @@
+name: gzh_llm5
+channels:
+  - conda-forge
+dependencies:
+  - python=3.13
+  - pip
+  - requests
+  - matplotlib
+  - tiktoken
+  - langchain-core
+  - langchain-ollama
+  - langchain-openai
