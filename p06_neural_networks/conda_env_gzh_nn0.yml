@@ -1,0 +1,15 @@
+name: gzh_nn0
+channels:
+  - conda-forge
+dependencies:
+  - python=3.13
+  - pip
+  - numpy
+  - scikit-learn
+  - matplotlib
+  - networkx
+  - pip:
+    # CPU/CUDA wheels from PyPI; for a specific CUDA version or a CPU-only build see https://pytorch.org/get-started/locally/
+    - torch
+    - torchvision
+    - torch_geometric
