@@ -1,0 +1,18 @@
+name: gzh_proc0
+channels:
+  - conda-forge
+dependencies:
+  - python=3.13
+  - pip
+  - numpy
+  - pandas
+  - pyarrow
+  - scipy
+  - scikit-learn
+  - joblib
+  - pandera
+  - regex
+  - tiktoken
+  - tokenizers
+  - datasets
+  - pytest

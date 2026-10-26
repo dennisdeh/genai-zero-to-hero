@@ -1,0 +1,16 @@
+name: gzh_viz0
+channels:
+  - conda-forge
+dependencies:
+  - python=3.13
+  - pip
+  - numpy
+  - pandas
+  - pyarrow
+  - scipy
+  - scikit-learn
+  - plotly
+  - streamlit
+  - pytest
+  # optional: static image export of plotly figures (needs a Chrome/Chromium browser)
+  - python-kaleido

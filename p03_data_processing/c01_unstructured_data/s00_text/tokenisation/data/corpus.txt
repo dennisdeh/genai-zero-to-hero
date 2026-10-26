@@ -1,0 +1,60 @@
+A short corpus for training tokenisers.
+This text was written for the genai-zero-to-hero repository so that the tokenisation examples run offline.
+It mixes everyday finance vocabulary, some machine learning terms, numbers, punctuation and a few non-English words.
+
+Saving and budgeting
+A budget is a plan for how money will be earned, saved and spent. Most budgets start with income: the salary after tax, plus any other regular payments. Then come the fixed expenses, such as rent, insurance and loan repayments, followed by variable expenses like groceries, transport and entertainment. Whatever is left at the end of the month can be saved or invested.
+A common rule of thumb is the 50/30/20 rule: 50% of the net income for needs, 30% for wants and 20% for savings. The rule is simple, which is its strength and its weakness. A family in an expensive city may spend 60% on needs, while a student living at home may save 40%.
+An emergency fund should cover three to six months of expenses. It is kept in a savings account that can be accessed quickly, because its purpose is safety, not return. Without an emergency fund, an unexpected bill for 1,200 EUR might have to be paid with an expensive credit card loan.
+
+Interest and compound growth
+Interest is the price of money over time. If you deposit 1,000 EUR at an annual interest rate of 3%, you receive 30 EUR after one year. If the interest is added to the balance and earns interest itself, the growth is called compound growth. After ten years the balance is 1,000 * 1.03^10 = 1,343.92 EUR.
+The rule of 72 gives a quick estimate of the doubling time: divide 72 by the interest rate in percent. At 6% per year, money doubles in roughly 12 years; at 9% it doubles in roughly 8 years.
+Inflation works in the opposite direction. If prices rise by 2% per year, the purchasing power of 1,000 EUR falls to about 820 EUR in ten years. The real interest rate is approximately the nominal interest rate minus the inflation rate.
+
+Stocks, bonds and funds
+A stock (or share) is a small piece of ownership in a company. Shareholders may receive dividends and benefit when the share price rises, but they also carry the risk that the price falls. A bond is a loan to a government or a company: the borrower pays a fixed coupon and repays the principal at maturity. Bonds are usually less volatile than stocks, but they are not risk free: the issuer can default, and bond prices fall when interest rates rise.
+An investment fund pools the money of many investors and buys a portfolio of stocks, bonds or other assets. Index funds and exchange traded funds (ETFs) track a market index such as a broad world index. Their costs are low, and they offer diversification: the failure of a single company has only a small effect on the portfolio.
+Diversification is often called the only free lunch in finance. By combining assets whose returns are not perfectly correlated, an investor can reduce risk without reducing the expected return.
+
+Risk and return
+Risk is usually measured by volatility, the standard deviation of returns. A portfolio with an expected return of 7% and a volatility of 15% will lose money in some years. Over long horizons, however, the probability of a loss decreases. Investors who sell in a panic during a market crash often lock in their losses.
+The Sharpe ratio compares the excess return of an investment over the risk-free rate with its volatility. A higher Sharpe ratio means more return per unit of risk. Other risk measures include the maximum drawdown, the value at risk (VaR) and the expected shortfall.
+
+Loans and mortgages
+A mortgage is a long-term loan used to buy a house. The monthly payment of an annuity loan is constant: at the beginning, most of the payment is interest; at the end, most of it is repayment of the principal. A fixed-rate mortgage protects the borrower against rising interest rates, while a variable-rate mortgage is usually cheaper at the start but less predictable.
+Before granting a loan, a bank assesses the credit risk of the borrower. Credit scoring models estimate the probability of default from features such as income, existing debt, payment history and employment status. Such models must be fair, explainable and regularly monitored, because the population of applicants changes over time.
+
+Machine learning in finance
+Machine learning models are used for credit scoring, fraud detection, customer churn prediction, demand forecasting and the analysis of financial news. A fraud detection model, for example, learns patterns of normal transactions and flags unusual ones: a card used in two countries within an hour, or a purchase that is ten times larger than usual.
+Good models need good data. Data cleaning, feature engineering and data quality checks often take more time than the modelling itself. Missing values must be imputed, outliers must be understood, and categories must be spelled consistently. The training data must be separated from the test data before any statistics are learned, otherwise the evaluation is too optimistic.
+Large language models process text as a sequence of tokens. A tokeniser splits the text into subword units: frequent words become a single token, while rare words are split into several pieces. The tokeniser is trained once on a large corpus and is then fixed for the lifetime of the model.
+
+Tokenisation in a nutshell
+Byte-pair encoding (BPE) starts with the individual bytes of the text. It counts how often each pair of adjacent symbols occurs and merges the most frequent pair into a new symbol. This step is repeated until the vocabulary has the desired size. Frequent sequences such as "the", "ing", " interest" or " rate" quickly become single tokens.
+The same text can therefore be represented with fewer tokens, which makes models faster and allows longer contexts. However, tokenisers trained mostly on English text need more tokens for other languages and for numbers such as 1,343.92 or 2024-12-31.
+
+A few words in other languages
+Danish: Opsparing er vigtig, og en buffer på tre måneders udgifter giver ro i maven. Renten på lånet er fast i tredive år.
+German: Die Zinsen für das Darlehen sind gestiegen, deshalb prüfen wir die monatliche Belastung und die Tilgung.
+French: Le taux d'intérêt a augmenté, donc le coût du crédit immobilier est plus élevé qu'avant.
+Spanish: La diversificación reduce el riesgo de la cartera sin reducir la rentabilidad esperada.
+
+Questions and answers
+Q: What is the difference between saving and investing?
+A: Saving means putting money aside, usually in a safe account with a low interest rate. Investing means buying assets such as stocks or funds that are expected to grow over time but can lose value.
+Q: How much should I keep in my emergency fund?
+A: Three to six months of essential expenses is a common recommendation. Freelancers with irregular income often keep more.
+Q: Why do bond prices fall when interest rates rise?
+A: A bond pays a fixed coupon. When new bonds pay a higher interest rate, the old bond is less attractive, so its price falls until its yield matches the market.
+Q: What does the expense ratio of a fund mean?
+A: The expense ratio is the annual fee of the fund as a percentage of the invested amount. An expense ratio of 0.20% costs 2 EUR per year for every 1,000 EUR invested.
+Q: Is a high return always good?
+A: No. A high return usually comes with a high risk. The return must always be compared with the risk that was taken to achieve it.
+
+Some code
+def compound(principal: float, rate: float, years: int) -> float:
+    return principal * (1 + rate) ** years
+
+for years in [1, 5, 10, 20]:
+    print(years, round(compound(1000.0, 0.03, years), 2))
