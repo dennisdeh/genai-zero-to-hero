@@ -26,7 +26,10 @@ The class `PoliteScraper` in `utils/polite_scraper.py` bundles the practices eve
 
 - **robots.txt** (Robots Exclusion Protocol, RFC 9309) tells crawlers which paths they may visit. It is read
   with `urllib.robotparser.RobotFileParser` and checked before every request; a `Crawl-delay` is honoured.
-  A missing robots.txt (404) allows everything, a 401/403 is treated as "disallow all".
+  A missing robots.txt (404) allows everything. RFC 9309 (section 2.3.1.3) treats *every* 4xx answer as
+  "unavailable", so a crawler may then access the site, and only an unreachable robots.txt (5xx, network
+  error) means "disallow all". Python's `RobotFileParser` - and therefore our scraper - is more conservative
+  and also treats 401/403 as "disallow all"; a 5xx that persists after the retries stops the scraper.
 - **Identify yourself** with a descriptive `User-Agent` including a URL or e-mail address, so that site owners
   can contact you instead of blocking you.
 - **Rate limiting**: wait at least `delay_s` (default 1 second) between requests. A scraper can easily send

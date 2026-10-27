@@ -22,9 +22,10 @@ web pages, which are meant for humans (chapter c04). Most public data APIs follo
 - **`requests.Session`** re-uses TCP and TLS connections (much faster for many calls) and shares default
   headers such as `User-Agent` and `Accept`.
 - **Retries with exponential back-off** via urllib3's `Retry` mounted on the session: connection errors and
-  the status codes 429, 500, 502, 503 and 504 are retried up to three times, waiting 0.5 s, 1 s, 2 s, and
-  honouring the server's `Retry-After` header. Only `GET` is retried, because only idempotent requests can be
-  repeated safely.
+  the status codes 429, 500, 502, 503 and 504 are retried up to three times. With `backoff_factor=0.5`,
+  urllib3 2.x retries the first failure immediately and then waits 1 s and 2 s (`backoff_factor * 2**(n-1)`
+  before retry n >= 2, capped at 120 s); a `Retry-After` header from the server takes precedence. Only `GET`
+  is retried, because only idempotent requests can be repeated safely.
 - **Timeouts** on every call; without them a hanging server blocks the program forever.
 - **Error translation**: status codes and exceptions are turned into an `ApiError` with an explanation
   (rate limit exhausted with reset time, not authorised, not found, bad parameters, server error, invalid JSON).
@@ -68,7 +69,10 @@ flattens nested dictionaries into dotted columns (`user.login`, `reactions.total
 dictionaries such as `labels` are converted explicitly (or with `record_path=` for one-to-many tables).
 The script also reads the **rate-limit headers** (`X-RateLimit-Limit`, `X-RateLimit-Remaining`,
 `X-RateLimit-Reset`): unauthenticated clients get 60 requests per hour, a token in `GITHUB_TOKEN` raises the
-limit to 5,000.
+limit to 5,000. When the limit is used up, GitHub answers with **403 or 429** and `X-RateLimit-Remaining: 0`;
+a *secondary* limit (too many requests in a short time) also uses 403 or 429, usually with a `Retry-After`
+header. `get_json` therefore checks these headers before it interprets a 403 as "not authorised", and reports
+the reset time or the requested wait instead.
 
 ### Example 3: time series (ECB exchange rates via Frankfurter)
 `main_3_exchange_rates.py` queries the Frankfurter API, which serves the euro reference rates published by the
@@ -76,7 +80,11 @@ European Central Bank. The time-series endpoint returns a dictionary keyed by da
 (`{"rates": {"2025-01-02": {"USD": 1.03, ...}, ...}}`). Here `pd.DataFrame.from_dict(..., orient="index")` is the
 right tool - `json_normalize` would produce one row with one column per date and currency, which the script
 prints for comparison. The series is then analysed (log returns, annualised volatility, monthly averages) and
-stored. Note that rates exist only for TARGET business days.
+stored. Note that rates exist only for TARGET business days. The script uses Frankfurter's *v1* API, which the
+maintainers have frozen: it is still served for existing clients, but v2 is the current version. This is a
+typical life-cycle event for any API you depend on - version endpoints explicitly (here via `--base-url`),
+watch deprecation notices, and plan the migration, because a new version often changes paths or response
+formats as well.
 
 ### Checklist for consuming an API
 1. Read the documentation: authentication, rate limits, pagination, terms of use and licence of the data.

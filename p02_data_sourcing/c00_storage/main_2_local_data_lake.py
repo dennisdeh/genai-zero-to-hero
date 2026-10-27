@@ -13,8 +13,9 @@ build here on the local file system:
 The script demonstrates:
     1. landing raw batches (JSON records, as they would arrive from an API) unchanged in a "raw" zone,
     2. idempotent ingestion: a batch that was already ingested (same content hash) is skipped,
-    3. curation: parsing, typing and de-duplicating records and writing them as Hive-partitioned Parquet,
-       where re-processing a day overwrites that day's partition instead of appending duplicates,
+    3. curation: parsing, typing and de-duplicating records and upserting them into Hive-partitioned
+       Parquet: late-arriving records are added to their (earlier) day, corrected records replace the
+       old version with the same transaction id, nothing else in the partition is lost,
     4. querying the lake with partition filters (pandas/pyarrow) and SQL (SQLite via SQLAlchemy).
 
 How to run (from the repository root):
@@ -34,7 +35,7 @@ from datetime import datetime, timezone
 
 import pandas as pd
 import pyarrow as pa
-import pyarrow.dataset as ds
+import pyarrow.parquet as pq
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 
@@ -45,6 +46,21 @@ PATH_RAW = os.path.join(PATH_LAKE, "raw", "transactions")
 PATH_CURATED = os.path.join(PATH_LAKE, "curated", "transactions")
 PATH_GOLD = os.path.join(PATH_LAKE, "gold")
 PATH_CATALOG = os.path.join(PATH_LAKE, "catalog.sqlite")
+
+# Explicit schema of the curated zone (schema-on-write): every partition file gets exactly these types,
+# no matter what pandas inferred for a particular batch. The partition column 'date' lives in the folder name.
+CURATED_SCHEMA = pa.schema(
+    [
+        ("transaction_id", pa.int64()),
+        ("ts", pa.timestamp("us")),
+        ("customer_id", pa.int64()),
+        ("category", pa.string()),
+        ("amount", pa.float64()),
+        ("country", pa.string()),
+        ("is_refund", pa.bool_()),
+        ("note", pa.string()),
+    ]
+)
 
 
 def get_catalog(path: str = PATH_CATALOG) -> Engine:
@@ -109,22 +125,43 @@ def curate(records: list[dict]) -> pd.DataFrame:
     return df
 
 
-def write_curated(df: pd.DataFrame) -> None:
+def write_curated(df: pd.DataFrame) -> dict[str, tuple[int, int]]:
     """
-    Write curated data as a Hive-partitioned Parquet dataset (one folder per day).
-    'delete_matching' replaces the partitions that are being written, so re-processing a day
-    overwrites it instead of creating duplicates - this keeps the curated zone idempotent.
+    Upsert curated rows into the Hive-partitioned Parquet dataset (one folder per event day).
+
+    A batch can contain records for several days: late-arriving events for an earlier day, or corrections
+    of records that were already stored. For every partition the batch touches, the existing rows are read,
+    the new rows are appended and duplicates on the record id are dropped (keep="last": the newest version
+    wins). The result replaces that partition's file; partitions the batch does not touch are neither read
+    nor written. Applying the same batch twice gives the same result (idempotent), and - unlike a plain
+    partition overwrite - rows that are not part of the batch are never lost.
+
+    Parameters:
+    df: pd.DataFrame
+        Output of curate(), including the 'date' partition column.
+
+    Return:
+        Dictionary {date: (rows before, rows after)} for every touched partition.
     """
-    table = pa.Table.from_pandas(df, preserve_index=False)
-    ds.write_dataset(
-        table,
-        base_dir=PATH_CURATED,
-        format="parquet",
-        partitioning=["date"],
-        partitioning_flavor="hive",
-        existing_data_behavior="delete_matching",
-        basename_template="part-{i}.parquet",
-    )
+    stats = {}
+    for date, df_new in df.groupby("date", sort=True):
+        path_dir = os.path.join(PATH_CURATED, f"date={date}")
+        path = os.path.join(path_dir, "part-0.parquet")
+        df_part = df_new[CURATED_SCHEMA.names]
+        n_before = 0
+        if os.path.exists(path):
+            df_old = pq.read_table(path).to_pandas()
+            n_before = len(df_old)
+            df_part = pd.concat([df_old, df_part], ignore_index=True)
+        df_part = df_part.drop_duplicates(subset="transaction_id", keep="last").sort_values("ts", kind="stable")
+        # write to a hidden temporary file first (readers ignore names starting with '.' or '_'),
+        # then rename: os.replace is atomic, so readers see either the old or the new partition
+        os.makedirs(path_dir, exist_ok=True)
+        path_tmp = os.path.join(path_dir, ".part-0.parquet.tmp")
+        pq.write_table(pa.Table.from_pandas(df_part, schema=CURATED_SCHEMA, preserve_index=False), path_tmp)
+        os.replace(path_tmp, path)
+        stats[str(date)] = (n_before, len(df_part))
+    return stats
 
 
 def ingest_batch(engine: Engine, records: list[dict], ingest_date: str, source: str = "shop_api") -> bool:
@@ -143,7 +180,7 @@ def ingest_batch(engine: Engine, records: list[dict], ingest_date: str, source: 
 
     raw_path = land_raw(records, ingest_date, batch_id)
     df = curate(records)
-    write_curated(df)
+    stats = write_curated(df)
     with engine.begin() as conn:  # the catalog entry is written only after the data is safely stored
         conn.execute(
             text(
@@ -158,7 +195,8 @@ def ingest_batch(engine: Engine, records: list[dict], ingest_date: str, source: 
                 "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             },
         )
-    print(f"  [ingest] batch {batch_id[:12]} ({ingest_date}): {len(df):,} rows -> partitions {sorted(df['date'].unique())}")
+    changes = ", ".join(f"date={d}: {a:,} -> {b:,}" for d, (a, b) in stats.items())
+    print(f"  [ingest] batch {batch_id[:12]} ({ingest_date}): {len(df):,} rows | partition rows {changes}")
     return True
 
 
@@ -212,21 +250,32 @@ def main(reset: bool = False) -> None:
     print("\n *** 2. Re-delivery of an identical batch (idempotency) *** ")
     ingest_batch(engine, make_daily_batch("2025-03-02"), ingest_date="2025-03-04")
 
-    # 3. A corrected batch for day 1 arrives (different content) -> its partition is overwritten
-    print("\n *** 3. Corrected batch for an earlier day (partition overwrite) *** ")
+    # 3. A corrected batch for day 1 arrives: 1,500 of its 2,000 records are re-sent with new values
+    #    -> upsert: those 1,500 transaction ids are updated, the other 500 rows of day 1 stay untouched
+    print("\n *** 3. Corrections for an earlier day (upsert by transaction_id) *** ")
     corrected = make_daily_batch("2025-03-01", n_rows=1_500, seed=7)
     ingest_batch(engine, corrected, ingest_date="2025-03-04")
 
-    # 4. Query the curated zone: partition pruning means only the matching folders are read
-    print("\n *** 4. Querying the curated zone *** ")
+    # 4. The batch of day 4 also carries 5 late-arriving events that happened on day 2
+    #    -> they are added to the partition of day 2, which keeps its 2,000 existing rows
+    print("\n *** 4. Late-arriving records (a batch that spans several partitions) *** ")
+    late = make_daily_batch("2025-03-02", n_rows=5, seed=99)
+    for record in late:
+        record["transaction_id"] += 90_000  # ids that do not exist yet: new events, not corrections
+    ingest_batch(engine, make_daily_batch("2025-03-04") + late, ingest_date="2025-03-04")
+
+    # 5. Query the curated zone: partition pruning means only the matching folders are read
+    print("\n *** 5. Querying the curated zone *** ")
     df_all = pd.read_parquet(PATH_CURATED)
-    print(f"Curated rows per day (day 1 now holds the corrected batch):\n{df_all.groupby('date').size().to_string()}")
+    print(f"Curated rows per day (day 2 includes the 5 late events):\n{df_all.groupby('date', observed=True).size().to_string()}")
+    n_dup = df_all["transaction_id"].duplicated().sum()
+    print(f"Duplicate transaction ids in the curated zone: {n_dup}")
     df_day = pd.read_parquet(PATH_CURATED, filters=[("date", "=", "2025-03-03")], columns=["category", "amount"])
     print(f"\nRead only partition date=2025-03-03: {len(df_day):,} rows")
     print(df_day.groupby("category", observed=True)["amount"].describe().round(2))
 
-    # 5. Gold layer + SQL access through the catalog database
-    print("\n *** 5. Gold layer and SQL *** ")
+    # 6. Gold layer + SQL access through the catalog database
+    print("\n *** 6. Gold layer and SQL *** ")
     build_gold(engine)
     with engine.connect() as conn:
         top = pd.read_sql(
@@ -239,8 +288,8 @@ def main(reset: bool = False) -> None:
     with pd.option_context("display.width", 200, "display.max_colwidth", 80):
         print(f"\nIngestion log (catalog):\n{log.to_string(index=False)}")
 
-    # 6. Show the layout
-    print("\n *** 6. Lake layout *** ")
+    # 7. Show the layout
+    print("\n *** 7. Lake layout *** ")
     print_tree(PATH_LAKE)
 
 

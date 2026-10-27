@@ -13,7 +13,7 @@ dependencies:
   - urllib3
   - beautifulsoup4
   - lxml
-  - apscheduler
+  - apscheduler>=3.10,<4  # the examples use the 3.x API (BackgroundScheduler, add_job); 4.x is a rewrite
   - datasets
   - huggingface_hub
   - pip:

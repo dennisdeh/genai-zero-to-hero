@@ -19,7 +19,11 @@ How to run (from the repository root):
     python -m p02_data_sourcing.c06_apis.main_3_exchange_rates
     python -m p02_data_sourcing.c06_apis.main_3_exchange_rates --start 2024-01-01 --end 2024-12-31 --symbols USD,GBP,DKK
 
-If the API has moved, pass another base URL with --base-url (older documentation uses https://api.frankfurter.app).
+API version: the script uses Frankfurter's v1 endpoints (https://api.frankfurter.dev/v1). Upstream, v1 is frozen
+(kept running for existing clients, but deprecated) and v2 is the current version for new projects. Do not assume
+that v2 is a drop-in replacement: check its documentation for the endpoint paths and the response format, and
+adapt the URLs built in main() and rates_to_frame() before pointing --base-url at it. If the v1 host moves, pass another base URL with
+--base-url (older documentation uses https://api.frankfurter.app).
 """
 
 import argparse
@@ -43,6 +47,7 @@ def rates_to_frame(payload: dict) -> pd.DataFrame:
     return df.sort_index()
 
 
+# Frankfurter v1: frozen/deprecated upstream but still served; v2 is current (see the module docstring)
 def main(start: str = "2025-01-01", end: str = "2025-06-30", symbols: str = "USD,GBP,DKK,SEK,JPY",
          base_url: str = "https://api.frankfurter.dev/v1") -> int:
     """Run the example. Returns a process exit code (0 = success)."""
@@ -95,6 +100,7 @@ if __name__ == "__main__":
     parser.add_argument("--start", default="2025-01-01", help="start date YYYY-MM-DD")
     parser.add_argument("--end", default="2025-06-30", help="end date YYYY-MM-DD")
     parser.add_argument("--symbols", default="USD,GBP,DKK,SEK,JPY", help="comma-separated currency codes")
-    parser.add_argument("--base-url", default="https://api.frankfurter.dev/v1", help="API base URL")
+    parser.add_argument("--base-url", default="https://api.frankfurter.dev/v1",
+                        help="API base URL (v1 endpoints; v1 is frozen upstream, check the v2 docs before switching)")
     args = parser.parse_args()
     sys.exit(main(start=args.start, end=args.end, symbols=args.symbols, base_url=args.base_url))

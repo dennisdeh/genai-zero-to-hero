@@ -15,6 +15,9 @@ cached in `outputs/`, so a repeated run within the cache lifetime works offline)
 - `python -m p02_data_sourcing.c06_apis.main_3_exchange_rates` - ECB euro reference rates from the Frankfurter
   API, nested JSON to a time-series DataFrame, returns and volatility.
   Options: `--start 2024-01-01 --end 2024-12-31 --symbols USD,GBP,DKK --base-url https://api.frankfurter.dev/v1`.
+  Note: the script uses Frankfurter's v1 API, which upstream has frozen (deprecated but still served); v2 is the
+  current version. Check the v2 documentation for paths and response format before pointing `--base-url` at it;
+  the endpoint URLs and `rates_to_frame()` may need to be adapted.
 
 The reusable HTTP client (session, retries, timeouts, error handling, caching) is in `utils/http_client.py`.
 Outputs are stored in `p02_data_sourcing/c06_apis/outputs/` (git-ignored).
