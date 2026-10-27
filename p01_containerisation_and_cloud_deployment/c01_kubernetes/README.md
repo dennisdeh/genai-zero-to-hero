@@ -4,7 +4,8 @@
 - The container image `gzh-iris-api:0.1.0`, built as described in `../c00_docker/README.md`.
 - Python conda environment for the client and the load test: `p00_fundamentals/c02_fastapi/conda_env_gzh_api0.yml`
 - Docker compose setup: none (see `../c00_docker`).
-- Environment variables: `API_URL` for the client/load test (default: `http://localhost:5000`).
+- Environment variables: `API_URL` for the client/load test (default: `http://localhost:5000`; inside the
+  cluster `http://iris-api`).
   The container configuration is set in `configmap.yaml`.
 
 ## How to run
@@ -34,11 +35,17 @@ All commands are run from the repository root.
    kubectl port-forward -n gzh service/iris-api 5000:80
    python -m p00_fundamentals.c02_fastapi.main_client      # in a second terminal
    ```
-5. Generate load and watch the autoscaler:
+5. Generate load inside the cluster and watch the autoscaler (`kubectl port-forward` would send all requests to
+   one pod, so new pods would stay idle; the API image contains Python and `requests`, the script is piped in):
    ```bash
-   python -m p01_containerisation_and_cloud_deployment.c01_kubernetes.main_load_test --duration 300 --concurrency 16
-   kubectl get hpa -n gzh --watch
+   kubectl run load-test -n gzh -i --rm --restart=Never --image=gzh-iris-api:0.1.0 \
+     --image-pull-policy=IfNotPresent --env=API_URL=http://iris-api -- \
+     python - --duration 300 --concurrency 16 --no-keep-alive \
+     < p01_containerisation_and_cloud_deployment/c01_kubernetes/main_load_test.py
+   kubectl get hpa,pods -n gzh --watch                                  # in a second terminal
    ```
+   (For a quick local benchmark through the port-forward of step 4:
+   `python -m p01_containerisation_and_cloud_deployment.c01_kubernetes.main_load_test`.)
 6. Clean up:
    ```bash
    kubectl delete -k p01_containerisation_and_cloud_deployment/c01_kubernetes

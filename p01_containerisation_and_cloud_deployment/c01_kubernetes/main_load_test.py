@@ -11,6 +11,14 @@ How to run (from the repository root, with the API reachable at API_URL, e.g. vi
 `kubectl port-forward -n gzh service/iris-api 5000:80`):
     python -m p01_containerisation_and_cloud_deployment.c01_kubernetes.main_load_test
     python -m p01_containerisation_and_cloud_deployment.c01_kubernetes.main_load_test --duration 300 --concurrency 16
+
+Note: `kubectl port-forward` sends all requests to ONE pod, so pods added by the autoscaler stay idle. To spread
+the load over all pods, run the script inside the cluster against the Service, with a new connection per request
+(see book_kubernetes.md):
+    kubectl run load-test -n gzh -i --rm --restart=Never --image=gzh-iris-api:0.1.0 \
+      --image-pull-policy=IfNotPresent --env=API_URL=http://iris-api -- \
+      python - --duration 300 --concurrency 16 --no-keep-alive \
+      < p01_containerisation_and_cloud_deployment/c01_kubernetes/main_load_test.py
 """
 
 import argparse
@@ -36,16 +44,27 @@ def random_flower(rng: random.Random) -> dict[str, float]:
 
 
 def worker(
-    worker_id: int, deadline: float, batch_size: int, latencies: list[float], errors: list[int]
+    worker_id: int,
+    deadline: float,
+    batch_size: int,
+    latencies: list[float],
+    errors: list[int],
+    keep_alive: bool = True,
 ) -> None:
     """Send requests until the deadline; record latencies (s) of successful calls and error counts."""
     rng = random.Random(worker_id)
+    # with keep-alive, each thread re-uses one TCP connection, i.e. it stays with the pod chosen when the
+    # connection was opened; "Connection: close" opens a new connection per request, which the Kubernetes
+    # Service balances over all ready pods (including pods added by the autoscaler)
+    headers = {} if keep_alive else {"Connection": "close"}
     with requests.Session() as session:
         while time.perf_counter() < deadline:
             payload = {"instances": [random_flower(rng) for _ in range(batch_size)]}
             start = time.perf_counter()
             try:
-                resp = session.post(f"{API_URL}/v1/predict/batch", json=payload, timeout=10)
+                resp = session.post(
+                    f"{API_URL}/v1/predict/batch", json=payload, headers=headers, timeout=10
+                )
                 ok = resp.status_code == 200
             except requests.RequestException:
                 ok = False
@@ -57,7 +76,9 @@ def worker(
                 errors.append(1)
 
 
-def run_load_test(duration_s: float, concurrency: int, batch_size: int) -> dict[str, float]:
+def run_load_test(
+    duration_s: float, concurrency: int, batch_size: int, keep_alive: bool = True
+) -> dict[str, float]:
     """Run the load test and return summary statistics."""
     # 1. Check that the service is ready before generating load
     requests.get(f"{API_URL}/ready", timeout=5).raise_for_status()
@@ -68,7 +89,8 @@ def run_load_test(duration_s: float, concurrency: int, batch_size: int) -> dict[
     deadline = time.perf_counter() + duration_s
     with ThreadPoolExecutor(max_workers=concurrency) as pool:
         futures = [
-            pool.submit(worker, i, deadline, batch_size, latencies, errors) for i in range(concurrency)
+            pool.submit(worker, i, deadline, batch_size, latencies, errors, keep_alive)
+            for i in range(concurrency)
         ]
         for f in futures:
             f.result()  # re-raises unexpected exceptions of the workers
@@ -90,6 +112,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--duration", type=float, default=20, help="seconds (default: %(default)s)")
     parser.add_argument("--concurrency", type=int, default=8, help="threads (default: %(default)s)")
     parser.add_argument("--batch-size", type=int, default=50, help="flowers/request (default: %(default)s)")
+    parser.add_argument(
+        "--no-keep-alive",
+        action="store_true",
+        help="open a new connection per request (spreads the load over all pods behind a Service)",
+    )
     return parser.parse_args()
 
 
@@ -97,8 +124,10 @@ if __name__ == "__main__":
     args = parse_args()
     print(
         f"Load test of {API_URL}: {args.concurrency} threads, batches of {args.batch_size}, "
-        f"{args.duration:.0f} s ..."
+        f"{args.duration:.0f} s, keep-alive {'off' if args.no_keep_alive else 'on'} ..."
     )
-    results = run_load_test(args.duration, args.concurrency, args.batch_size)
+    results = run_load_test(
+        args.duration, args.concurrency, args.batch_size, keep_alive=not args.no_keep_alive
+    )
     for key, value in results.items():
         print(f"{key:>16}: {value:,.1f}" if isinstance(value, float) else f"{key:>16}: {value}")

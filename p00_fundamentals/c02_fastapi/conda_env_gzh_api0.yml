@@ -14,4 +14,3 @@ dependencies:
   - requests
   - httpx
   - pytest
-  - pyyaml

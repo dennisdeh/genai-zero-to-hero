@@ -13,7 +13,9 @@ The references listed below also serve as additional resources for to be explore
 - Cloud Run documentation: https://cloud.google.com/run/docs
 - Artifact Registry - pushing and pulling images: https://cloud.google.com/artifact-registry/docs/docker/pushing-and-pulling
 - Azure Container Apps documentation: https://learn.microsoft.com/en-us/azure/container-apps/
-- AWS App Runner documentation: https://docs.aws.amazon.com/apprunner/
+- Amazon ECS Developer Guide (including ECS Express Mode and the Fargate launch type): https://docs.aws.amazon.com/AmazonECS/latest/developerguide/
+- AWS App Runner availability change (closed to new customers from 30 April 2026): https://docs.aws.amazon.com/apprunner/latest/dg/apprunner-availability-change.html
+- Google Cloud: Workload Identity Federation with deployment pipelines: https://cloud.google.com/iam/docs/workload-identity-federation-with-deployment-pipelines
 - GitHub Actions documentation: https://docs.github.com/en/actions
 - Security hardening with OpenID Connect (GitHub Actions): https://docs.github.com/en/actions/security-for-github-actions/security-hardening-your-deployments/about-security-hardening-with-openid-connect
 - FastAPI deployment concepts: https://fastapi.tiangolo.com/deployment/concepts/

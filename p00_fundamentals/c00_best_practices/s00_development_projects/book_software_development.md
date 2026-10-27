@@ -140,8 +140,8 @@ ML code is harder to test because it involves randomness, floating-point arithme
   standardisation: the output has mean 0 and standard deviation 1 for every column; `inverse(transform(x))`
   returns `x`; and changing the units of a feature ($x \mapsto ax + b$ with $a > 0$) does not change the z-scores.
   The example runs these over several seeds and shapes with `parametrize`; the
-  [Hypothesis](https://hypothesis.readthedocs.io/) library generates such inputs automatically, including nasty edge
-  cases.
+  [Hypothesis](https://hypothesis.readthedocs.io/) library (not used here) generates such inputs automatically,
+  including nasty edge cases.
 - **Leakage tests**: preprocessing fitted on the training data must not be refitted on test data
   (`test_test_data_uses_training_statistics`).
 - **Behavioural tests of models**: invariance (a model's prediction should not change when an irrelevant feature
@@ -220,8 +220,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
       - run: pip install numpy pytest ruff mypy

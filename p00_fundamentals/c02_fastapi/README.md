@@ -5,8 +5,9 @@
   `p01_containerisation_and_cloud_deployment/c00_docker`.
 - Environment variables (all optional):
   - `MODEL_DIR`: folder with `model.joblib` and `metadata.json` (default: `p00_fundamentals/c02_fastapi/outputs/model`)
-  - `LOG_LEVEL`: logging level of the API (default: `INFO`)
-  - `MAX_BATCH_SIZE`: maximum number of instances per batch request (default: `1000`)
+  - `LOG_LEVEL`: logging level of the API, one of `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`
+    (default: `INFO`; unknown values fall back to `INFO` with a warning)
+  - `MAX_BATCH_SIZE`: maximum number of instances per batch request, between 1 and 10000 (default: `1000`)
   - `HOST`, `PORT`: bind address when started with `python -m ...main_api` (default: `127.0.0.1`, `5000`)
   - `API_URL`: base URL used by the client (default: `http://localhost:5000`)
 

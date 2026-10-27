@@ -43,8 +43,11 @@ conda activate gzh_ml0
 ```
 All environments are prefixed with `gzh_` and their files with `conda_env_gzh_`, so they are easy to find
 (`conda env list`) and to remove again. Each chapter README names the environment it needs in its
-"Environment" section. The environment files list the direct dependencies without version pins; chapter c01
-explains this choice and how to pin versions when exact reproducibility is needed.
+"Environment" section. Most environment files list only the direct dependencies, without version pins (apart
+from the Python version); a few (`gzh_base` and the environments of the heavier LLM and agent chapters, e.g.
+`gzh_llm0`, `gzh_llm1`, `gzh_llm3`, `gzh_llm4` and `gzh_agents0`) are full exports with exact versions, because
+their packages are sensitive to version changes. Chapter c01 explains both approaches and how to pin versions when
+exact reproducibility is needed.
 
 ### Running the examples
 Every script is run **from the repository root** as a module:
@@ -65,7 +68,9 @@ Settings that differ between machines (ports, model names, the LLM provider) and
 environment variables, for example `LLM_TO_USE`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL` or `OPENAI_API_KEY` in parts
 p07 and p08. Locally they are conveniently kept in a `.env` file in the repository root, which is loaded with
 `python-dotenv` and is listed in `.gitignore`: **never commit a `.env` file or paste keys into code**. Chapter c00
-explains the pattern in more detail.
+explains the pattern in more detail. Two chapters (`p07_llms/c04_rag_systems` and `p08_agents/c00_langchain_langgraph`)
+contain a tracked `.env` file; these are meant to hold only non-secret settings such as ports. Secrets must
+always go in an untracked file (or the environment), never in a tracked `.env`.
 
 ### Services with Docker
 Some chapters need a running service, started with docker compose from the chapter folder:

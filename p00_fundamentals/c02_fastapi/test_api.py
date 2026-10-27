@@ -15,7 +15,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from p00_fundamentals.c02_fastapi.main_api import create_app
-from p00_fundamentals.c02_fastapi.utils.schemas import EXAMPLE_FLOWER
+from p00_fundamentals.c02_fastapi.utils.config import Settings
+from p00_fundamentals.c02_fastapi.utils.schemas import EXAMPLE_FLOWER, MAX_INSTANCES_PER_REQUEST
 from p00_fundamentals.c02_fastapi.utils.training import train_and_save
 
 VERSION = "9.9.9-test"
@@ -86,10 +87,19 @@ def test_predict_batch(client: TestClient) -> None:
 
 
 def test_batch_size_limit(model_dir: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    # above the configurable MAX_BATCH_SIZE: rejected by the endpoint with 413 (Content Too Large)
     monkeypatch.setenv("MAX_BATCH_SIZE", "2")
     with TestClient(create_app(model_dir=model_dir)) as c:
         resp = c.post("/v1/predict/batch", json={"instances": [EXAMPLE_FLOWER] * 3})
     assert resp.status_code == 413
+
+
+def test_batch_hard_limit(client: TestClient) -> None:
+    # above the hard limit of the schema: rejected during validation with 422, like any invalid input
+    too_many = {"instances": [EXAMPLE_FLOWER] * (MAX_INSTANCES_PER_REQUEST + 1)}
+    resp = client.post("/v1/predict/batch", json=too_many)
+    assert resp.status_code == 422
+    assert resp.json()["detail"][0]["type"] == "too_long"
 
 
 # 4. Input validation
@@ -110,7 +120,22 @@ def test_empty_batch_rejected(client: TestClient) -> None:
     assert client.post("/v1/predict/batch", json={"instances": []}).status_code == 422
 
 
-# 5. Behaviour without a model: alive, but not ready
+# 5. Configuration from environment variables
+def test_invalid_log_level_falls_back_to_info(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LOG_LEVEL", "verbose")
+    assert Settings.from_env().log_level == "INFO"
+    monkeypatch.setenv("LOG_LEVEL", "debug")
+    assert Settings.from_env().log_level == "DEBUG"
+
+
+@pytest.mark.parametrize("value", ["many", "0", str(MAX_INSTANCES_PER_REQUEST + 1)])
+def test_invalid_max_batch_size_fails_fast(monkeypatch: pytest.MonkeyPatch, value: str) -> None:
+    monkeypatch.setenv("MAX_BATCH_SIZE", value)
+    with pytest.raises(ValueError, match="MAX_BATCH_SIZE"):
+        Settings.from_env()
+
+
+# 6. Behaviour without a model: alive, but not ready
 def test_without_model(client_without_model: TestClient) -> None:
     assert client_without_model.get("/health").status_code == 200
     assert client_without_model.get("/ready").status_code == 503

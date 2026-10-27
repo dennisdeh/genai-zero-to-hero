@@ -26,7 +26,11 @@ Objects find each other through **labels and selectors**: the Deployment's pod t
 
 ### The manifests
 #### Deployment (`deployment.yaml`)
-The Deployment runs two replicas of the image. The most important settings for a model service are:
+The Deployment describes the pods of the API; their number is managed by the HorizontalPodAutoscaler (at least
+two, see below). The Deployment therefore does not set `spec.replicas`: with a value in the manifest, every
+`kubectl apply` would reset the number of pods to it and override the autoscaler's decision, so the Kubernetes
+documentation recommends omitting it when an HPA is used. (A new Deployment then starts with one pod, and the HPA
+raises it to its minimum of two.) The most important settings for a model service are:
 
 **Probes.** Kubernetes uses three kinds of HTTP checks, mapped onto the endpoints of the FastAPI service:
 - the *startup probe* (`/health`) gives the application up to 60 s to start; the other probes only begin once it
@@ -105,14 +109,22 @@ With minikube, the equivalent steps are `minikube start`, `minikube image load g
 ### Experiments
 - **Self-healing**: delete a pod (`kubectl delete pod -n gzh <name>`) and watch the Deployment replace it
   (`kubectl get pods -n gzh --watch`).
-- **Autoscaling**: generate load with the load-test script, and watch the HPA in another terminal:
+- **Autoscaling**: generate load with the load-test script, and watch the HPA and the pods in another terminal.
+  The script sends batch requests from several threads and reports throughput and latency percentiles. It must
+  run *inside* the cluster: `kubectl port-forward` sends all traffic to a single pod (and can itself become the
+  bottleneck), so pods added by the autoscaler would stay idle. The image of the API already contains Python and
+  `requests`, so a temporary pod can run the script (piped in via stdin) against the Service's DNS name:
   ```bash
-  python -m p01_containerisation_and_cloud_deployment.c01_kubernetes.main_load_test --duration 300 --concurrency 16
-  kubectl get hpa -n gzh --watch
+  kubectl run load-test -n gzh -i --rm --restart=Never --image=gzh-iris-api:0.1.0 \
+    --image-pull-policy=IfNotPresent --env=API_URL=http://iris-api -- \
+    python - --duration 300 --concurrency 16 --no-keep-alive \
+    < p01_containerisation_and_cloud_deployment/c01_kubernetes/main_load_test.py
+  kubectl get hpa,pods -n gzh --watch                                  # second terminal
+  kubectl top pods -n gzh                                               # CPU usage per pod
   ```
-  The script sends batch requests from several threads and reports throughput and latency percentiles.
-  Note that `kubectl port-forward` tunnels through a single connection to one pod and can itself become the
-  bottleneck; for a realistic test, run the load generator inside the cluster or expose the Service via an Ingress.
+  `--no-keep-alive` opens a new connection for every request. This matters because the Service balances
+  *connections*, not requests: a client that keeps its connections open stays with the pods it first connected
+  to, and new pods would receive no traffic from it.
 - **Rolling update**: build a new model version (`--build-arg MODEL_VERSION=1.1.0 -t gzh-iris-api:0.2.0`),
   load it into kind, then `kubectl set image deployment/iris-api api=gzh-iris-api:0.2.0 -n gzh` and follow
   `kubectl rollout status`; `/v1/model/metadata` reports the new version. Undo with `kubectl rollout undo`.

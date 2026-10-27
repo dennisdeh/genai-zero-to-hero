@@ -13,7 +13,7 @@ image":
 |---|---|---|---|
 | Virtual machines | Compute Engine, EC2, Azure VMs | OS, Docker, scaling, load balancing | full control, GPUs, legacy |
 | Managed Kubernetes | GKE, EKS, AKS | manifests, node pools (partly) | many services, complex workloads, platform teams |
-| Serverless containers | Cloud Run, Azure Container Apps, AWS App Runner / ECS on Fargate | the image and a few settings | stateless HTTP APIs such as model services |
+| Serverless containers | Cloud Run, Azure Container Apps, Amazon ECS Express Mode / ECS on Fargate | the image and a few settings | stateless HTTP APIs such as model services |
 | Managed ML endpoints | Vertex AI, SageMaker, Azure ML | the model (container optional) | MLOps integration, built-in monitoring |
 
 For a small stateless model API, **serverless containers** are usually the best starting point: no cluster to
@@ -91,9 +91,12 @@ Container Apps is built on Kubernetes and KEDA and supports scale to zero, revis
 
 On **AWS**, the image is pushed to Amazon ECR
 (`aws ecr get-login-password | docker login --username AWS --password-stdin <account>.dkr.ecr.<region>.amazonaws.com`)
-and run with AWS App Runner (closest to Cloud Run) or Amazon ECS on Fargate behind an Application Load Balancer
-(more configuration, more control). Check the current offerings of your provider, as managed services evolve
-quickly.
+and run on Amazon ECS with the serverless Fargate launch type. *ECS Express Mode* is the closest equivalent of
+Cloud Run: from an image, a port and a few settings it creates the service together with an HTTPS endpoint (an
+Application Load Balancer), auto-scaling and logging; alternatively, these resources are configured one by one
+(more configuration, more control). AWS App Runner, formerly AWS's closest match to Cloud Run, no longer accepts
+new customers since 30 April 2026, and AWS points to ECS Express Mode as its replacement. Check the current
+offerings of your provider, as managed services evolve quickly.
 
 ### Configuration and secrets in the cloud
 The twelve-factor configuration of the service pays off here: settings are passed as environment variables of
@@ -108,16 +111,29 @@ deployed image. `github_actions_ci_cd_example.yml` is an example workflow; it is
 `.github/workflows/`, so it does not run in this repository). It defines three jobs:
 1. **test** - installs the dependencies and runs the pytest suite of p00. Nothing is built if a test fails.
 2. **build** - builds the image with Docker Buildx (with layer caching in the GitHub Actions cache), runs it and
-   smoke-tests `/ready` and `/v1/predict` with `curl`, and - except for pull requests - pushes it to Artifact
-   Registry, tagged with the commit SHA.
+   smoke-tests `/ready` and `/v1/predict` with `curl`, and - except for pull requests - tags exactly this tested
+   image with the commit SHA and pushes it to Artifact Registry (no second build).
 3. **deploy** - only for pushes to `main`: deploys the image to Cloud Run and smoke-tests the live URL. It runs in
    the GitHub *environment* `production`, which can require a manual approval.
 
-The workflow uses no stored credentials: **Workload Identity Federation** lets Google Cloud trust GitHub's
-short-lived OIDC tokens (`permissions: id-token: write`) for a specific repository, so no service account key has
-to be created, stored or rotated. The values that identify the project and service account are configured as
-repository *variables* (they are not secret). The workflow triggers only on changes to the relevant folders
-(`paths`), which is useful in a monorepo like this one.
+The workflow uses no stored credentials: with **Workload Identity Federation** (WIF), GitHub issues a short-lived
+OIDC token for each workflow run (`permissions: id-token: write`), and Google Cloud exchanges it for short-lived
+credentials of a deployer service account, so no service account key has to be created, stored or rotated. This
+requires a one-off set-up in the Google Cloud project (the `gcloud` commands are in this chapter's `README.md`):
+1. a *workload identity pool* with an *OIDC provider* for the issuer `https://token.actions.githubusercontent.com`,
+   which maps claims of the token to attributes (e.g. `attribute.repository=assertion.repository`) and has an
+   *attribute condition* such as `assertion.repository=='OWNER/REPO'`;
+2. a binding of the role `roles/iam.workloadIdentityUser` on the deployer service account for the principals of
+   this repository (`principalSet://iam.googleapis.com/projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/POOL/attribute.repository/OWNER/REPO`);
+3. the roles the deployer needs: `roles/artifactregistry.writer` (push images), `roles/run.admin` (deploy
+   services and, for `--allow-unauthenticated`, set their IAM policy) and `roles/iam.serviceAccountUser` on the
+   service account that the Cloud Run service runs as.
+
+Only with the attribute condition (and the repository-specific binding) are the credentials restricted to a
+specific repository; a pool without a condition would admit tokens from *any* GitHub repository, which is why
+Google requires a condition for GitHub providers. The values that identify the project, the provider and the
+service accounts are configured as repository *variables* (they are not secret). The workflow triggers only on
+changes to the relevant folders (`paths`), which is useful in a monorepo like this one.
 
 Typical extensions are a vulnerability scan of the image (e.g. Trivy) before pushing, deployment to a staging
 environment with integration tests before production, gradual traffic shifting (canary) with automatic rollback
