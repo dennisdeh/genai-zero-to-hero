@@ -38,10 +38,14 @@ more powerful than linear regression. Common activation functions:
   transformers) are popular variants.
 
 **Universal approximation.** Why do we expect this to work at all? The universal approximation theorem
-(Cybenko 1989, Hornik 1991) states that an MLP with a single hidden layer and a non-polynomial activation
-can approximate any continuous function on a compact set $K \subset \mathbb{R}^d$ to arbitrary accuracy:
+states that an MLP with a single hidden layer and a non-polynomial activation $\sigma$ can approximate any
+continuous function on a compact set $K \subset \mathbb{R}^d$ to arbitrary accuracy:
 for every $\varepsilon > 0$ there are $N$, $\mathbf{w}_i$, $b_i$, $v_i$ such that
 $$ \sup_{\mathbf{x} \in K} \Big| f(\mathbf{x}) - \sum_{i=1}^{N} v_i\, \sigma(\mathbf{w}_i^\top \mathbf{x} + b_i) \Big| < \varepsilon. $$
+Cybenko (1989) proved this for sigmoidal activations and Hornik (1991) for bounded, non-constant ones;
+Leshno, Lin, Pinkus and Schocken (1993) showed that for continuous (more generally, locally bounded and
+piecewise continuous) activations the condition "not a polynomial" is both sufficient and necessary – which
+covers unbounded activations such as ReLU.
 The theorem guarantees *existence* only: it says nothing about how many neurons are needed, or whether
 gradient descent finds the weights, or whether the result generalises to new data. In practice, deeper
 networks represent many functions with far fewer parameters than shallow ones, which is one reason why
@@ -73,8 +77,8 @@ the same order as the forward pass – this efficiency is what makes training ne
 billions of parameters possible.
 
 Hand-written gradients are easy to get wrong, so the script verifies them with a **gradient check**: for a few
-weights it compares the analytical derivative with the central finite difference
-$\big(\mathcal{L}(w+\epsilon) - \mathcal{L}(w-\epsilon)\big)/(2\epsilon)$. A relative error around $10^{-7}$
+randomly chosen weights and biases it compares the analytical derivative with the central finite difference
+$\big(\mathcal{L}(w+\epsilon) - \mathcal{L}(w-\epsilon)\big)/(2\epsilon)$. A relative error of about $10^{-7}$ or less
 means the implementation is correct. Frameworks such as PyTorch remove the need to derive gradients by hand:
 *autograd* records the operations of the forward pass in a computational graph and applies the chain rule
 automatically when `loss.backward()` is called.
@@ -144,8 +148,11 @@ smooth and the validation loss low, and the combination generalises best.
 
 The scripts use `get_device()` (CUDA → MPS → CPU) and `set_seed()` from the shared utils so the results are
 reproducible. On CPU, `get_device()` also enables `torch.set_flush_denormal(True)`: once a network fits its
-training data, some gradients become so small that they are stored as *denormal* floating-point numbers,
-which many CPUs process 10–100 times more slowly – a surprisingly common cause of "training suddenly got slow".
+training data, some gradients become so small that they are stored as *denormal* (subnormal) floating-point
+numbers, and arithmetic on them can be much slower on some CPUs when many values become subnormal. A more
+common cause of "training on the CPU is suddenly slow" is thread oversubscription: on a shared machine, or with
+several processes training at once, each PyTorch process starts as many threads as there are cores, and they
+compete for them. Setting `OMP_NUM_THREADS=1` (or calling `torch.set_num_threads(n)`) usually fixes it.
 
 **Things to try:** change `--activation` to `sigmoid` with 6 layers and watch training slow down; set
 `--dropout 0 --weight-decay 0 --patience 1000` and compare the learning curves; vary the learning rate over

@@ -138,7 +138,8 @@ def plot_regularisation(results: dict, data: tuple, device: torch.device, path: 
 
 if __name__ == "__main__":
     # note: get_device() also enables torch.set_flush_denormal(True) on CPU – without it, the tiny gradients
-    # of the over-fitted network below become "denormal" floats and training is 10-50x slower
+    # of the over-fitted network below can become "denormal" floats, which some CPUs process much more slowly.
+    # If training is slow on a shared machine, first suspect thread oversubscription (set OMP_NUM_THREADS=1).
     device = get_device()
     output_dir = get_output_dir(__file__)
     print(f"device: {device}")

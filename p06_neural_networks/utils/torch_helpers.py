@@ -7,6 +7,7 @@ Contents:
 - get_output_dir(): create/return an `outputs/` folder next to a script
 - train_one_epoch() / evaluate(): a generic supervised training loop for classifiers
 - EarlyStopping: stop training when the validation loss stops improving and remember the best weights
+  (optionally also the optimiser and scheduler states of the best epoch)
 - count_parameters(): number of trainable parameters of a model
 
 Usage (from the repository root):
@@ -32,8 +33,10 @@ def get_device(prefer: Optional[str] = None) -> torch.device:
     The environment variable `TORCH_DEVICE` (or the argument `prefer`) can force a device, e.g. "cpu".
 
     On CPU, "denormal" (subnormal) floats are flushed to zero: once a network fits its training data,
-    gradients and activations can become so tiny that they are stored as denormals, and arithmetic on
-    them is 10-100x slower on many x86 CPUs. Flushing them changes the results negligibly.
+    gradients and activations can become so tiny that they are stored as denormals, and on some CPUs
+    arithmetic on them is much slower when many values become subnormal. Flushing them changes the
+    results negligibly. (A more common cause of slow CPU training is thread oversubscription on a shared
+    machine – limit the threads with OMP_NUM_THREADS=1 or torch.set_num_threads(n).)
     """
     forced = prefer or os.environ.get("TORCH_DEVICE")
     if forced:
@@ -131,6 +134,9 @@ class EarlyStopping:
     Stop training when the monitored validation loss has not improved for `patience` epochs.
 
     The weights of the best epoch are kept in memory and can be restored with `restore_best()`.
+    If an optimiser and/or a learning-rate scheduler are passed to `step()`, their states at the best epoch
+    are kept as well, so that a checkpoint written after `restore_best()` holds model, optimiser, scheduler
+    and epoch number of the *same* epoch (consistent for resuming training, not just for inference).
     """
 
     def __init__(self, patience: int = 10, min_delta: float = 0.0):
@@ -139,20 +145,48 @@ class EarlyStopping:
         self.best_loss = float("inf")
         self.best_epoch = -1
         self.best_state: Optional[dict] = None
+        self.best_optimiser_state: Optional[dict] = None
+        self.best_scheduler_state: Optional[dict] = None
         self.counter = 0
 
-    def step(self, val_loss: float, model: nn.Module, epoch: int) -> bool:
-        """Update with the latest validation loss. Returns True if training should stop."""
+    def step(
+        self,
+        val_loss: float,
+        model: nn.Module,
+        epoch: int,
+        optimiser: Optional[torch.optim.Optimizer] = None,
+        scheduler: Optional[torch.optim.lr_scheduler.LRScheduler] = None,
+    ) -> bool:
+        """
+        Update with the latest validation loss. Returns True if training should stop.
+
+        Call it at the very end of an epoch (after `scheduler.step()`), so the stored optimiser and scheduler
+        states are those from which the next epoch would start.
+        """
         if val_loss < self.best_loss - self.min_delta:
             self.best_loss = val_loss
             self.best_epoch = epoch
+            # deep copies: state_dict() returns references to the live tensors, which keep changing
             self.best_state = copy.deepcopy(model.state_dict())
+            if optimiser is not None:
+                self.best_optimiser_state = copy.deepcopy(optimiser.state_dict())
+            if scheduler is not None:
+                self.best_scheduler_state = copy.deepcopy(scheduler.state_dict())
             self.counter = 0
         else:
             self.counter += 1
         return self.counter >= self.patience
 
-    def restore_best(self, model: nn.Module) -> None:
-        """Load the weights of the best epoch into the model."""
+    def restore_best(
+        self,
+        model: nn.Module,
+        optimiser: Optional[torch.optim.Optimizer] = None,
+        scheduler: Optional[torch.optim.lr_scheduler.LRScheduler] = None,
+    ) -> None:
+        """Load the state of the best epoch into the model (and the optimiser/scheduler, if given and tracked)."""
         if self.best_state is not None:
             model.load_state_dict(self.best_state)
+        if optimiser is not None and self.best_optimiser_state is not None:
+            optimiser.load_state_dict(self.best_optimiser_state)
+        if scheduler is not None and self.best_scheduler_state is not None:
+            scheduler.load_state_dict(self.best_scheduler_state)
