@@ -127,6 +127,9 @@ Defaults are a reasonable start, but tuning typically buys a few per mille of lo
    of trees need not be searched. The final model is refitted with the best number of trees.
 
 Typical test results: defaults 0.843 ROC-AUC / 0.437 log-loss, random search 0.849 / 0.430, Optuna 0.850 / 0.428.
-Tuning helped mostly by moving away from the default 31 leaves (too complex for 12,000 rows) to smaller trees with a
-lower learning rate and more regularisation. Differences of about 0.001 are within the noise of a 4,000-row test
+Both searches gain mainly from a much lower learning rate (about 0.02 instead of 0.1) combined with more trees and
+row/column subsampling. The random-search winner even uses *more* leaves than the default (39 vs 31) but with a large
+minimum leaf size (`min_child_samples` 148 instead of 20); Optuna instead chose very small trees (6 leaves). Several
+quite different configurations reach almost the same CV log-loss (the top 5 of the random search lie within 0.003),
+so the "best" hyperparameters should not be read as a unique optimum. Differences of about 0.001 are within the noise of a 4,000-row test
 set; do not over-interpret them, and never tune on the test set.

@@ -54,9 +54,16 @@ An **experiment** groups related **runs**; a run is one execution of training co
   - `pyfunc_predict_fn="predict_proba"` so that the generic Python-function interface (and the REST API) returns
     probabilities instead of hard labels;
   - `skops_trusted_types`: recent MLflow versions save scikit-learn models with **skops** instead of pickle by
-    default. Unpickling can execute arbitrary code, so loading untrusted pickles is a security risk; skops only
-    reconstructs types that are explicitly trusted. Plain estimators are trusted by default, the low-level tree
-    structures of random forests and HistGradientBoosting are declared explicitly.
+    default. Unpickling can execute arbitrary code; skops instead only reconstructs types on an allow-list. Plain
+    estimators are on skops' default list, the low-level tree structures of random forests and HistGradientBoosting
+    are declared explicitly here. **This is not a security boundary in MLflow**: skops protects only when the
+    *loader* supplies the trusted list, but MLflow stores `skops_trusted_types` in the model's own `MLmodel` file and
+    reads it back at load time - a crafted or tampered model can simply whitelist dangerous types. Loading an MLflow
+    model (pickle or skops) therefore still means executing code from its artifact: only load models from a
+    registry/artifact store you trust (access control, write permissions restricted to the training pipeline,
+    verified artifacts). On machines that should never deserialize models, set
+    `MLFLOW_ALLOW_PICKLE_DESERIALIZATION=false` (the default is `true`); from MLflow 3.17 on it blocks loading of
+    scikit-learn models in every format, including skops.
 
 MLflow additionally records the git commit, the source file, the user and the start/end time of the run. Many
 libraries can also be logged with a single line, `mlflow.sklearn.autolog()` (or `mlflow.xgboost.autolog()`,
@@ -66,7 +73,10 @@ Runs are queried like a database table: `mlflow.search_runs(experiment_names=[..
 filter_string="tags.stage = 'model-selection'", order_by=["metrics.val_roc_auc DESC"])` returns a pandas DataFrame
 with one row per run and columns such as `params.learning_rate`, `metrics.val_roc_auc` and `tags.model_family`.
 The script prints a leaderboard; on the churn data the HistGradientBoosting model with learning rate 0.05 and 15
-leaves wins (validation ROC-AUC about 0.844), followed by the random forest and the logistic regressions.
+leaves wins (validation ROC-AUC about 0.844), followed by the random forest and the logistic regressions. One
+caveat: the HistGradientBoosting runs use the same validation set for early stopping that then ranks all models,
+which biases the leaderboard slightly in their favour; a cleaner setup uses a separate early-stopping split carved
+out of the training data (or HistGradientBoosting's internal `validation_fraction`).
 
 ### Model registry
 The registry gives models a **name** (`churn-classifier`) and sequential **versions**; each version points to the
@@ -152,8 +162,12 @@ In week 4 the PSI of `tenure_months` exceeds 0.2 and the ROC-AUC drops by more t
 3. if the challenger is better (e.g. 0.847 vs 0.844 ROC-AUC), the `@champion` alias is moved to it. The previous
    version stays in the registry, so a rollback is a single alias change.
 
-The demo also shows a subtlety: after retraining, the reference distribution for drift detection must be updated
-as well - otherwise the drift alerts keep firing (week 5) although the new model has already adapted. Real systems
+The demo also shows a subtlety: after retraining, the reference distribution for drift detection must follow the
+new model. The script appends the 2,000 recent rows used for retraining to the reference, but the 12,000 original
+rows still dominate it and week 5 drifts even further, so the drift alert keeps firing (PSI about 0.73) although the
+new model's ROC-AUC (0.845) is back at the reference level and no performance alert is raised. In practice the
+reference is usually a recent window of the data the current model was trained on (or the PSI baseline is reset
+after a retrain), so that alerts measure change relative to what the model has already adapted to. Real systems
 add more safeguards: a minimum amount of new labelled data, statistical tests for the champion/challenger comparison,
 shadow deployments or A/B tests before promotion, and scheduled (e.g. monthly) retraining in addition to
 alert-based triggers. Scheduling such a job with APScheduler or cron is covered in part p02; dedicated

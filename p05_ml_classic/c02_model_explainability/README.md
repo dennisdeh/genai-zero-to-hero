@@ -1,6 +1,8 @@
 ## Environment
 - Python conda environment to use: `../conda_env_gzh_ml0.yml` (part-level environment `gzh_ml0`, includes `shap`),
   e.g. `conda env create -f p05_ml_classic/conda_env_gzh_ml0.yml && conda activate gzh_ml0`
+- Minimum versions (pinned in the yml): lightgbm >= 4.7 (`LGBMClassifier.fit(eval_X=..., eval_y=...)`),
+  scikit-learn >= 1.8.
 - Docker compose setup: none needed
 - Environment variables: none needed. The scripts use the synthetic churn dataset from
   `p05_ml_classic/c01_gradient_boosted_trees/utils/churn_data.py`.

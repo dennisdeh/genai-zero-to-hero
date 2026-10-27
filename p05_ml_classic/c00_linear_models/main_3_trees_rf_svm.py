@@ -9,7 +9,8 @@ This script demonstrates:
     3. Random forests: out-of-bag (OOB) error as a free validation estimate, and its dependence on the
        number of trees.
     4. SVM hyperparameters C and gamma tuned by grid search.
-    5. A fair 5-fold cross-validated comparison of all model families on the breast cancer dataset.
+    5. A fair 5-fold cross-validated comparison of all model families on the breast cancer dataset (nested CV
+       for the models whose hyperparameters are tuned).
 
 Plots are saved to the outputs/ folder next to this script.
 
@@ -149,16 +150,31 @@ if __name__ == "__main__":
     print(f"\nRBF SVM best params: {svm_search.best_params_}, CV acc={svm_search.best_score_:.4f}, "
           f"test acc={svm_search.score(X_test, y_test):.3f}, support vectors={svm_search.best_estimator_[-1].n_support_.sum()}")
 
-    # 4. Fair comparison: identical 5-fold CV splits on the training set for every model family
+    # 4. Fair comparison: identical 5-fold CV splits on the training set for every model family.
+    #    Models with tuned hyperparameters are evaluated with *nested* CV: the GridSearchCV object itself is the
+    #    estimator, so every outer fold re-runs the search on its own training part (inner CV) and the outer test
+    #    fold is never used to choose hyperparameters. Re-using svm_search.best_estimator_ (tuned on all of
+    #    X_train) here would report an optimistically biased score equal to svm_search.best_score_.
+    inner_cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=SEED + 1)
     candidates = {
-        "Logistic regression": make_pipeline(StandardScaler(), LogisticRegression(C=0.3, max_iter=5000)),
-        "Decision tree (pruned)": DecisionTreeClassifier(ccp_alpha=pruned_tree.ccp_alpha, random_state=SEED),
+        "Logistic regression (tuned)": GridSearchCV(
+            # L2 penalty only (default lbfgs solver): the saga elastic-net grid of main_2 is ~100x slower here
+            make_pipeline(StandardScaler(), LogisticRegression(max_iter=5000)),
+            {"logisticregression__C": np.logspace(-3, 2, 11)},
+            cv=inner_cv,
+            scoring="roc_auc",
+        ),
+        "Decision tree (pruned)": GridSearchCV(
+            DecisionTreeClassifier(random_state=SEED), {"ccp_alpha": np.r_[0.0, np.logspace(-4, -1, 16)]}, cv=inner_cv
+        ),
         "Random forest": RandomForestClassifier(n_estimators=300, random_state=SEED, n_jobs=-1),
-        "RBF SVM (tuned)": svm_search.best_estimator_,
+        "RBF SVM (tuned)": GridSearchCV(
+            make_pipeline(StandardScaler(), SVC(kernel="rbf")), svm_search.param_grid, cv=inner_cv
+        ),
     }
     rows = []
     for name, model in candidates.items():
-        scores = cross_validate(model, X_train, y_train, cv=cv, scoring=["accuracy", "roc_auc"])
+        scores = cross_validate(model, X_train, y_train, cv=cv, scoring=["accuracy", "roc_auc"], n_jobs=-1)
         rows.append(
             {
                 "model": name,
@@ -167,6 +183,6 @@ if __name__ == "__main__":
                 "fit_time_s": round(scores["fit_time"].mean(), 3),
             }
         )
-    print("\n5-fold cross-validated comparison on the breast cancer training set:")
+    print("\n5-fold (nested for tuned models) cross-validated comparison on the breast cancer training set:")
     print(pd.DataFrame(rows).to_string(index=False))
     print(f"\nPlots saved to {OUTPUT_DIR}")

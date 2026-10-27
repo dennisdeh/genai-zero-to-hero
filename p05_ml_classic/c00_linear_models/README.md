@@ -1,6 +1,8 @@
 ## Environment
 - Python conda environment to use: `../conda_env_gzh_ml0.yml` (part-level environment `gzh_ml0`),
   e.g. `conda env create -f p05_ml_classic/conda_env_gzh_ml0.yml && conda activate gzh_ml0`
+- Minimum versions (pinned in the yml): scikit-learn >= 1.8 (`LogisticRegression(l1_ratio=...)` without the
+  deprecated `penalty` argument).
 - Docker compose setup: none needed
 - Environment variables: none needed. All datasets (diabetes, breast cancer, two moons) ship with scikit-learn,
   so the scripts run offline.
