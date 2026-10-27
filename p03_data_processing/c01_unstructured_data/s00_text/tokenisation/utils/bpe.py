@@ -13,6 +13,9 @@ The algorithm follows the GPT-2/GPT-4 family of tokenisers (see also A. Karpathy
 4. Encoding: apply the learned merges to new text in the order they were learned (lowest id first).
 5. Decoding: concatenate the bytes of the tokens and decode them as UTF-8.
 
+The input must be valid Unicode text: a lone surrogate (e.g. U+D800, which can come from broken JSON
+or file names) has no UTF-8 encoding and raises a ``UnicodeEncodeError`` - like in tiktoken.
+
 For speed, training works on the *distinct* chunks weighted by their frequency rather than on the raw
 text. The implementation is plain Python and meant for small corpora; production tokenisers (HF
 ``tokenizers``, ``tiktoken``) implement the same idea in Rust.
@@ -24,11 +27,12 @@ from collections import Counter
 try:  # the `regex` module supports unicode classes such as \p{L}; it is a dependency of tiktoken
     import regex as re
 
-    # pre-tokenisation pattern of OpenAI's cl100k_base (GPT-4) tokeniser
+    # pre-tokenisation pattern of OpenAI's cl100k_base (GPT-4) tokeniser, exactly as in tiktoken
     SPLIT_PATTERN = (
-        r"""'(?i:[sdmt]|ll|ve|re)|[^\r\n\p{L}\p{N}]?+\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]++[\r\n]*|\s*[\r\n]|\s+(?!\S)|\s+"""
+        r"""'(?i:[sdmt]|ll|ve|re)|[^\r\n\p{L}\p{N}]?+\p{L}++|\p{N}{1,3}+| ?[^\s\p{L}\p{N}]++[\r\n]*+|\s++$|\s*[\r\n]|"""
+        r"""\s+(?!\S)|\s"""
     )
-except ImportError:  # simplified fallback with the standard library
+except ImportError:  # simplified fallback with the standard library (not identical to cl100k_base)
     import re
 
     SPLIT_PATTERN = r"""'(?:[sdmt]|ll|ve|re)| ?[^\W\d_]+| ?\d{1,3}| ?[^\s\w]+|\s+(?!\S)|\s+"""
@@ -78,6 +82,9 @@ class BPETokeniser:
         :param verbose: print every merge
         """
         assert vocab_size >= 256, "the vocabulary must at least contain the 256 byte values"
+        # start from the 256 byte values (calling train twice must not mix two sets of merges)
+        self.merges = {}
+        self.vocab = {i: bytes([i]) for i in range(256)}
         chunk_counts = Counter(self.compiled_pattern.findall(text))
         chunks = [(list(chunk.encode("utf-8")), freq) for chunk, freq in chunk_counts.items()]
 
@@ -119,14 +126,30 @@ class BPETokeniser:
             ids.extend(self._encode_chunk(chunk.encode("utf-8")))
         return ids
 
-    def encode(self, text: str) -> list[int]:
-        """Encode text; occurrences of special tokens (e.g. <|endoftext|>) are mapped to their ids."""
-        if not self.special_tokens:
+    def encode(self, text: str, allowed_special: str | set[str] = "none") -> list[int]:
+        """
+        Encode text, mapping the *allowed* special tokens (e.g. <|endoftext|>) to their ids.
+
+        Special token strings in untrusted text (user input, scraped documents) must not silently become
+        control tokens - a user could otherwise end a document or inject a role marker ("special token
+        injection"). Like tiktoken, the default therefore raises an error if the text contains a special
+        token string; pass ``allowed_special="all"`` (or a set of names) for trusted text, or use
+        ``encode_ordinary`` to treat the strings as ordinary text.
+
+        :param allowed_special: "all", "none" or a set of special token strings to recognise
+        """
+        allowed = (set(self.special_tokens) if allowed_special == "all"
+                   else set() if allowed_special == "none" else set(allowed_special))
+        disallowed = [s for s in self.special_tokens if s not in allowed and s in text]
+        if disallowed:
+            raise ValueError(f"text contains the special token(s) {disallowed}; pass allowed_special to "
+                             f"encode them as special tokens, or use encode_ordinary to encode them as text")
+        if not allowed:
             return self.encode_ordinary(text)
-        special_pattern = "(" + "|".join(re.escape(s) for s in self.special_tokens) + ")"
+        special_pattern = "(" + "|".join(re.escape(s) for s in allowed) + ")"
         ids = []
         for part in re.split(special_pattern, text):
-            if part in self.special_tokens:
+            if part in allowed:
                 ids.append(self.special_tokens[part])
             elif part:
                 ids.extend(self.encode_ordinary(part))

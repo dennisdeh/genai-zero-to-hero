@@ -19,7 +19,7 @@ a column with `"52,000"` and `"EUR 52000"` would otherwise silently become `obje
 
 **Inspect first.** For each column: dtype, number and share of missing values, number of distinct
 values, and the distinct spellings of categorical columns. This overview already reveals most problems
-(e.g. 25 spellings of five countries).
+(e.g. 24 different spellings of five countries, plus missing values).
 
 **Column names** are converted to `snake_case` (`"Annual Income (EUR)"` → `annual_income_eur`), so that
 they are valid Python identifiers and consistent across sources.
@@ -32,10 +32,14 @@ common rules are "latest update wins" (sort by a timestamp) or aggregating the r
 matters: `03.04.2023` is the 3rd of April in Europe but would be read as the 4th of March by a US-centric
 parser. Unparsable entries (`"not available"`) become `NaT` and are counted.
 
-**Numbers stored as text** are cleaned with a regular expression that removes everything except
-digits, the decimal point and the minus sign, then converted with `pd.to_numeric(errors="coerce")`.
-Watch out for locales that use the comma as decimal separator (`45,90`) - such data needs a separate
-rule.
+**Numbers stored as text** are parsed with a *whitelist*: a regular expression describes the formats
+we expect - an optional sign, an optional currency symbol or code (`€`, `EUR`), digits with optional
+comma thousands separators and one decimal point, or accounting parentheses (`(12.50)` means $-12.50$).
+Everything else becomes `NaN` instead of being guessed. The tempting shortcut of deleting every
+character except digits, `.` and `-` silently misreads values: `1e5` becomes 15, `1.234,56` becomes
+1.23456, and `(12.50)` or `−12.50` (with the Unicode minus sign) lose their sign - which matters here,
+because a refund is defined as a negative amount. Locales that use the comma as decimal separator
+(`45,90`) need a separate, explicit rule.
 
 **Categories.** All variants are normalised (strip, lower-case, collapse separators) and mapped to a
 canonical value through a lookup table; unknown spellings become missing instead of creating new
@@ -64,9 +68,10 @@ unlike CSV - preserves the dtypes (dates, categories, nullable integers).
 #### Feature engineering and leakage-free pipelines (`main_2_feature_pipeline.py`)
 The goal is to predict churn per customer. `utils/features.py` first builds a customer-level table by
 aggregating each customer's transactions: number of purchases, total and average spend, number of
-distinct categories, favourite category, share of refunds, days since the last purchase and tenure.
-These aggregations are *row-wise* - each customer only uses its own transactions - so computing them
-before the train/test split leaks nothing.
+distinct categories, favourite category, share of refunds and tenure. These aggregations are
+*row-wise* - each customer only uses its own transactions - so computing them before the train/test
+split leaks nothing *between rows*. (The days since the last purchase are computed as well, but are
+deliberately not a model feature - see the second leakage lesson below.)
 
 Everything that learns from the data across rows goes into a scikit-learn `Pipeline`:
 
@@ -79,8 +84,9 @@ skewed = Pipeline([("impute", SimpleImputer(strategy="median")),
                    ("scale", StandardScaler())])
 nominal = Pipeline([("impute", SimpleImputer(strategy="most_frequent")),
                     ("onehot", OneHotEncoder(handle_unknown="ignore", sparse_output=False))])
-ordinal = Pipeline([("impute", SimpleImputer(strategy="most_frequent")),
-                    ("ordinal", OrdinalEncoder(categories=[["Basic", "Standard", "Premium"]]))])
+ordinal = Pipeline([("ordinal", OrdinalEncoder(categories=[["Basic", "Standard", "Premium"]],
+                                               handle_unknown="use_encoded_value", unknown_value=np.nan)),
+                    ("impute", SimpleImputer(strategy="most_frequent"))])
 columns = ColumnTransformer([("num", numeric, NUMERIC_FEATURES), ("skewed", skewed, SKEWED_FEATURES),
                              ("nominal", nominal, NOMINAL_FEATURES), ("ordinal", ordinal, ["plan"])])
 ```
@@ -93,22 +99,37 @@ columns = ColumnTransformer([("num", numeric, NUMERIC_FEATURES), ("skewed", skew
   informative in itself.
 - Money amounts are log-transformed before scaling because they are right-skewed.
 - `OneHotEncoder(handle_unknown="ignore")` encodes a category never seen in training (e.g. a new
-  country) as all zeros instead of failing at prediction time.
+  country) as all zeros instead of failing at prediction time. The `OrdinalEncoder` would raise an
+  error for an unknown plan by default; with `handle_unknown="use_encoded_value", unknown_value=np.nan`
+  it encodes it as missing, and the following imputer fills it in.
 - A stateless `FunctionTransformer` adds the ratio feature `spend_per_month` as the first pipeline
   step, so the same feature engineering is applied at inference time.
 
 The data is split with `train_test_split(..., stratify=y)` **before** anything is fitted. The pipeline
 (preprocessing + logistic regression) is evaluated with 5-fold cross-validation on the training set and
-once on the test set (ROC AUC about 0.94). The pipeline is saved with `joblib` and can score a raw record
-directly, including missing values and unseen categories.
+once on the test set (ROC AUC about 0.77; 0.75 in cross-validation). That is a realistic value: the
+simulated churn depends on a latent "engagement" that the data only shows indirectly, through the
+number of purchases and support tickets - which are, accordingly, the largest coefficients. The
+pipeline is saved with `joblib` and can score a raw record directly, including missing values and
+unseen categories (a new country, or a plan `"Enterprise"` that did not exist in the training data).
 
-**Why the pipeline matters - a leakage demonstration.** `demonstrate_leakage()` creates 200 samples
+**Leakage lesson 1: preprocessing must live inside the pipeline.** `demonstrate_leakage()` creates 200 samples
 with 2000 pure-noise features and *random* labels. Selecting the 20 "best" features on the full data
 and then cross-validating gives an accuracy of about 0.77, although there is nothing to learn. With
 the selection inside the pipeline it is refitted on every training fold, and the honest accuracy is
 about 0.5. The same mechanism - more subtly - applies to imputation, scaling and target encoding.
 
-A caveat about this example: the strongest feature is the number of days since the last purchase,
-because in the simulation churned customers stop buying. In a real project features must be computed
-from data available *before* the moment of prediction (a time-based cut-off), otherwise the label
-leaks into the features through time.
+**Leakage lesson 2: target leakage through post-outcome features.** A first version of this example
+also used the number of days since the last purchase - and reached a test ROC AUC of 0.94, with that
+feature as by far the largest coefficient. The pipeline was perfectly leakage-free in the sense of
+lesson 1, yet the result was worthless: in the data, churned customers *stop buying*, so a long gap
+since the last purchase is a *consequence* of churn, measured after it happened. On its own, the
+recency feature relative to the tenure ranks churners almost perfectly (AUC 0.97).
+`demonstrate_target_leakage()` reproduces the comparison: 0.94 with the feature, 0.77 without. A model
+that needs to know whether a customer has already left cannot warn us *before* they leave.
+
+The rule: every feature may only use information that is available *at the moment of prediction*.
+The proper fix in a real project is a *cut-off date*: features are computed only from data before the
+cut-off, and the label (did the customer churn in, say, the following 90 days?) only from data after
+it. Suspiciously good results, and a single feature that dominates all others, are the typical
+symptoms of target leakage - investigate them before celebrating.

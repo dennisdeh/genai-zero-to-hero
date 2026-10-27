@@ -88,10 +88,39 @@ def parse_mixed_dates(s: pd.Series, formats: list[str]) -> pd.Series:
     return result
 
 
+# A whitelist of the number formats we expect: an optional sign (also the Unicode minus U+2212), an
+# optional currency symbol or ISO code (EUR, USD, ...) before or after the number, digits with optional comma
+# thousands separators and a single decimal point - or the same in accounting parentheses "(12.50)",
+# which means a negative amount. Anything else (scientific notation, decimal commas, several signs, ...)
+# is not guessed at but becomes NaN.
+_CURRENCY = r"(?:[€$£]|(?i:EUR|USD|GBP|DKK|SEK|NOK|CHF))"
+_NUMBER = r"(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d*)?|\.\d+"
+NUMERIC_PATTERN = re.compile(
+    rf"^(?P<sign>[-+\u2212])?\s*{_CURRENCY}?\s*(?P<sign2>[-+\u2212])?\s*(?P<num>{_NUMBER})\s*{_CURRENCY}?$"
+    rf"|^\(\s*{_CURRENCY}?\s*(?P<acc>{_NUMBER})\s*{_CURRENCY}?\s*\)$"
+)
+
+
 def parse_numeric(s: pd.Series) -> pd.Series:
-    """Convert text such as 'EUR 52,000', '€45.90' or '52000.0' to floats (unparsable -> NaN)."""
-    cleaned = s.astype("string").str.replace(r"[^0-9.\-]", "", regex=True)
-    return pd.to_numeric(cleaned, errors="coerce").astype(float)
+    """
+    Convert text such as 'EUR 52,000', '€45.90', '€-12.50', '(12.50)' or '52000.0' to floats.
+
+    Only the formats described by ``NUMERIC_PATTERN`` are accepted; everything else (e.g. '1e5',
+    '1.234,56', '45,90', '--5') becomes NaN instead of being silently misread.
+    """
+    def parse(text) -> float:
+        if pd.isna(text):
+            return np.nan
+        m = NUMERIC_PATTERN.match(str(text).strip())
+        if m is None or (m["sign"] and m["sign2"]):
+            return np.nan
+        if m["acc"] is not None:  # accounting notation: (12.50) means -12.50
+            return -float(m["acc"].replace(",", ""))
+        negative = (m["sign"] or m["sign2"] or "") in ("-", "\u2212")
+        value = float(m["num"].replace(",", ""))
+        return -value if negative else value
+
+    return s.map(parse).astype(float)
 
 
 def parse_boolean(s: pd.Series) -> pd.Series:

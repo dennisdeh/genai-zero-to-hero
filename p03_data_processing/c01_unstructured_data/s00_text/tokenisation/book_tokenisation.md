@@ -23,11 +23,18 @@ family, Llama and many others. In its byte-level variant it works as follows:
    lowest merge rank first); *decoding* concatenates the bytes of the tokens.
 
 Special tokens such as `<|endoftext|>` are added on top of the learned vocabulary and are used to
-separate documents when they are concatenated into one training stream.
+separate documents when they are concatenated into one training stream. They are control signals, so
+untrusted text (user input, scraped web pages) must never be able to produce them just by containing
+the string `"<|endoftext|>"` - otherwise a user could end a document or inject a chat role marker
+(*special token injection*). tiktoken therefore raises an error by default if the text contains a
+special token string; `encode(text, allowed_special="all")` is for trusted text, and
+`encode_ordinary` encodes the string as normal text. Our from-scratch tokeniser behaves the same way.
 
 ##### BPE from scratch (`main_bpe_tokeniser.py`, `utils/bpe.py`)
 `BPETokeniser` implements the algorithm above in about 150 lines of plain Python, using the
-pre-tokenisation pattern of OpenAI's `cl100k_base` (GPT-4) tokeniser. For speed, training counts pairs
+pre-tokenisation pattern of OpenAI's `cl100k_base` (GPT-4) tokeniser, exactly as in tiktoken. It expects
+valid Unicode text: a lone surrogate code point (which can appear in broken JSON) has no UTF-8 encoding
+and raises a `UnicodeEncodeError`, as in tiktoken. For speed, training counts pairs
 over the *distinct* chunks weighted by their frequency instead of over the raw text. The script trains
 it on the small bundled corpus `data/corpus.txt` (an original text about personal finance, with some
 Danish, German, French and Spanish sentences and a few lines of code), using 90 % of the lines for
@@ -39,7 +46,8 @@ The script then checks that `decode(encode(text)) == text`, shows how example se
 (Danish text and numbers need many more tokens than English prose, because the corpus is mostly
 English), saves and reloads the tokeniser as JSON, and exports the learned merges to
 `tiktoken.Encoding`. Because tiktoken uses exactly the same algorithm, the Rust implementation must
-produce identical ids - a strong test of the from-scratch code - and it is about 20 times faster.
+produce identical ids - a strong test of the from-scratch code - and it is more than an order of
+magnitude faster.
 
 ##### Comparison with production tokenisers
 The Hugging Face `tokenizers` library trains a byte-level BPE in Rust with a few lines of code

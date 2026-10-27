@@ -12,7 +12,8 @@ This part is organised by the type of data:
 
 - **Structured data** (chapter `c00_structured_data`): tabular data in pandas. We generate a realistic,
   deliberately messy dataset of an online shop (customers and their transactions), clean it step by
-  step, engineer features and assemble a leakage-free scikit-learn preprocessing pipeline
+  step, engineer features, assemble a leakage-free scikit-learn preprocessing pipeline and see how a
+  post-outcome feature leaks the target
   (section `s01_preprocessing`). Section `s02_dqa` turns the expectations about the data into automated
   data quality checks - schema, completeness, uniqueness, ranges, referential integrity - and monitors
   distribution drift between data batches.

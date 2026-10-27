@@ -21,19 +21,28 @@ no HTML/JavaScript), but it means that expensive work must not be repeated on ev
 The app visualises the cleaned online-shop data of part 3 (`load_clean_data()` in
 `p03_data_processing/c00_structured_data/s01_preprocessing/utils/cleaning.py`):
 
-- **Sidebar filters**: period (`st.date_input` with a range), country, segment and plan
-  (`st.multiselect`). The filters apply to everything on the page; an empty selection shows a warning
-  instead of empty charts.
+- **Sidebar filters**: period (`st.date_input` with a range; by default the last 12 calendar months, so
+  that the monthly chart does not start with a partial month), country, segment and plan
+  (`st.multiselect`). The filters apply to the KPIs, the charts and the data table (not to the churn
+  model, see below); an empty selection shows a warning instead of empty charts. Date ranges are
+  half-open - from the start date up to, but excluding, the day after the end date - so consecutive
+  periods never count a transaction twice.
 - **KPI tiles** (`st.metric`): net revenue, orders, active customers, average order value and churn rate,
-  each with the change versus the previous period of equal length. A headline number is better shown as
-  a number than as a chart.
+  with the change versus the previous period of equal length. If the data does not cover that previous
+  period completely, no change is shown: comparing with a half-empty period would produce meaningless
+  growth rates of several hundred percent. A headline number is better shown as a number than as a
+  chart.
 - **Tabs** (`st.tabs`):
   - *Overview*: monthly net revenue (line) and revenue by category (sorted bars),
   - *Customers*: churn rate by segment/plan/country with the overall rate as a reference line, and the
     distribution of an attribute for churned vs. active customers,
-  - *Churn model*: the logistic regression pipeline of part 3 trained on the fly (cached with
-    `st.cache_resource`), its test ROC AUC, the largest coefficients, and a form to score a hypothetical
-    customer,
+  - *Churn model*: the logistic regression pipeline of part 3 trained on the fly on all customers
+    (cached with `st.cache_resource`), its test ROC AUC (about 0.77), the strongest associations
+    (largest coefficients), and a form to score a hypothetical customer. Like in part 3, the model
+    deliberately does not use the days since the last purchase: churned customers stop buying, so that
+    feature is a consequence of churn and would leak the outcome (a test ROC AUC of 0.94 that is
+    useless in practice). For the same reason the chart is titled "associations", not "drivers": a
+    coefficient describes a correlation in the data, not a cause,
   - *Data*: the filtered transactions (`st.dataframe`) and a CSV download (`st.download_button`).
 
 The code is split so that the Streamlit script stays thin: `utils/data.py` (loading, filtering,
@@ -57,9 +66,13 @@ assert not at.exception
 at.sidebar.multiselect(key="countries").set_value(["Denmark"]).run()
 ```
 
-`test_main_app.py` checks that the app runs without exceptions, that the KPIs and tabs are rendered, that
-the filters change the KPIs (and that an empty selection shows a warning), and that the prediction form
-returns a probability.
+`test_main_app.py` contains unit tests of the plain functions in `utils/` (half-open date filters, the
+previous period, the KPIs, and a churn model without post-outcome features whose prediction rises with
+the number of support tickets) and headless app tests: the app runs without exceptions, the KPIs and
+tabs are rendered, the filters change the KPIs (an empty selection shows a warning), no change is shown
+when the previous period is not covered by the data, and the prediction form returns a probability
+between 0 and 1 that reacts to its inputs. Each app test starts from a fresh `AppTest`, so the tests do
+not depend on each other's widget state; data and model come from Streamlit's cache.
 
 ### Deployment
 For a quick demo, `streamlit run` on a laptop is enough. To share an app, common options are Streamlit

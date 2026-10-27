@@ -58,7 +58,7 @@ def coefficient_chart(coefficients: pd.Series, n: int = 10) -> go.Figure:
     colours = [CATEGORICAL[7] if v > 0 else CATEGORICAL[0] for v in top]
     fig = go.Figure(go.Bar(x=top.values, y=names, orientation="h", marker_color=colours,
                            hovertemplate="%{y}: %{x:.2f}<extra></extra>"))
-    fig.update_layout(title="What drives churn? (standardised coefficients, red = increases risk)",
-                      xaxis_title="Coefficient", height=380, margin=dict(t=50))
+    fig.update_layout(title="Strongest associations with churn (red = higher predicted risk)",
+                      xaxis_title="Coefficient (numeric inputs standardised)", height=380, margin=dict(t=50))
     return fig
 

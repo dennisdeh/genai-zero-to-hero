@@ -3,9 +3,12 @@ A consistent visual style for all Plotly figures of this part, plus helpers to s
 
 Good charts share one visual system: the same fonts, recessive grid lines, thin marks and a fixed
 categorical colour order (a series keeps its colour in every chart). The palette below is a
-colour-vision-deficiency (CVD) checked set of 8 categorical hues; the order matters - neighbouring
-slots stay distinguishable for colour-blind readers. Use at most ~3 colours when marks overlap
-(scatter plots), otherwise highlight one series and grey out the rest, or use small multiples.
+set of 8 categorical hues whose *adjacent* slots were checked to stay distinguishable under simulated
+colour vision deficiencies (CVD); the order matters. Some non-adjacent pairs are close for colour-blind
+readers (orange slot 1 vs. dark green slot 5 for protanopia, blue slot 0 vs. purple slot 6 for
+deuteranopia), so with many series pick slots that are all distinct, label lines directly, or avoid
+colour as the only cue. Use at most ~3 colours when marks overlap (scatter plots), otherwise highlight
+one series and grey out the rest, or use small multiples.
 
 Usage:
     from p04_visualisation_and_applications.c00_plotting.utils.style import apply_style, save_html
@@ -76,7 +79,8 @@ def save_html(fig: go.Figure, name: str, path_outputs: str, offline: bool = True
     """
     os.makedirs(path_outputs, exist_ok=True)
     path = os.path.join(path_outputs, f"{name}.html")
-    fig.write_html(path, include_plotlyjs=True if offline else "cdn", full_html=True)
+    # auto_play=False: animations wait for the play button instead of starting on page load
+    fig.write_html(path, include_plotlyjs=True if offline else "cdn", full_html=True, auto_play=False)
     return path
 
 
@@ -95,7 +99,7 @@ def save_report(figures: dict[str, go.Figure], path: str, title: str = "Report")
              f"<h1>{title}</h1>"]
     for i, (heading, fig) in enumerate(figures.items()):
         parts.append(f"<h2>{heading}</h2>")
-        parts.append(fig.to_html(full_html=False, include_plotlyjs=(i == 0)))
+        parts.append(fig.to_html(full_html=False, include_plotlyjs=(i == 0), auto_play=False))
     parts.append("</body></html>")
     with open(path, "w", encoding="utf-8") as f:
         f.write("\n".join(parts))

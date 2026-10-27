@@ -10,7 +10,7 @@ dependencies:
   - scipy
   - scikit-learn
   - joblib
-  - pandera
+  - pandera>=0.24
   - regex
   - tiktoken
   - tokenizers

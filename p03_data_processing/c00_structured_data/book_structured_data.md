@@ -40,7 +40,8 @@ purchases); this is used to simulate a new data batch in the data quality sectio
 
 ### Overview of the sections
 - `s01_preprocessing`: cleaning with pandas (`main_1_cleaning.py`) and feature engineering with a
-  scikit-learn `Pipeline`/`ColumnTransformer` that avoids data leakage (`main_2_feature_pipeline.py`).
+  scikit-learn `Pipeline`/`ColumnTransformer` that avoids data leakage, plus a demonstration of target
+  leakage through a post-outcome feature (`main_2_feature_pipeline.py`).
 - `s02_dqa`: data quality assurance - a pass/fail data quality report from reusable checks
   (`main_1_quality_report.py`), drift detection with PSI, Kolmogorov-Smirnov and chi-squared tests
   (`main_2_drift_detection.py`) and declarative schemas with pandera (`main_3_pandera_validation.py`).
