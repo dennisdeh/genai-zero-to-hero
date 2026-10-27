@@ -203,6 +203,7 @@ dependencies:
   - zstandard=0.25.0=py313h54dd161_1
   - zstd=1.5.7=hb78ec9c_6
   - pip:
+      - docx2txt==0.9  # Docx2txtLoader (p07 c04 document_loaders, .docx documents)
       - langchain-classic==1.0.1
       - langchain-text-splitters==1.1.1
       - langgraph-swarm==0.1.0

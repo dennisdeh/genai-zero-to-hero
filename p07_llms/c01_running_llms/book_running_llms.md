@@ -50,10 +50,13 @@ DeepSeek, ...) can be pulled by name.
   requires the NVIDIA Container Toolkit; without a GPU, remove the `deploy` block and Ollama runs on the CPU
   (slowly, but small models work).
 - `main.sh` lists the commands to run *inside* the container (`docker exec -it gzh_ollama /bin/bash`):
-  `ollama pull qwen3:4b` downloads a model and `ollama run` starts an interactive chat in the terminal.
+  `ollama pull qwen3:4b` downloads a model and `ollama run qwen3` starts an interactive chat in the terminal
+  (`ollama run` first pulls the model if it is missing; the bare name `qwen3` means `qwen3:latest`, the 8B model).
 - `main_ollama.py` calls the REST API with `requests`: `POST /api/generate` with a JSON payload
   `{"model": ..., "prompt": ..., "stream": false}` returns a JSON object whose `response` field holds the
-  generated text (with `"stream": true` the answer arrives as a sequence of JSON lines, token by token).
+  generated text (with `"stream": true` the answer arrives as a sequence of JSON lines, token by token). The
+  script requests `model = "qwen3"`, so `qwen3:latest` must be installed (`ollama pull qwen3`); to use another
+  model such as `qwen3:4b`, change `model` to that tag.
 - `utils/helpers.py` contains two helpers used throughout the repository: `ollama_get_available_models` queries
   `GET /api/tags` for the installed models (and returns an empty list with a helpful message if the server is not
   reachable), and `normalise_ollama_model` resolves the common naming mismatch between a requested model and the

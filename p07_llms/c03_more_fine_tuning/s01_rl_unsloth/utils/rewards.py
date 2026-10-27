@@ -1,3 +1,16 @@
+# Portions of this file are derived from:
+#   Unsloth notebook "Qwen2.5_(3B)-GRPO.ipynb"
+#   https://github.com/unslothai/notebooks/blob/main/nb/Qwen2.5_(3B)-GRPO.ipynb
+#   Original author: Unsloth AI (Daniel Han, Michael Han and contributors); License: LGPL-3.0
+#   (https://github.com/unslothai/notebooks/blob/main/LICENSE)
+#   which in turn takes the data preparation and reward functions from the GRPO demo by Will Brown (@willccbb):
+#   https://gist.github.com/willccbb/4676755236bb08cab5f4e54a0475d6fb (no separate licence stated in the gist)
+# Derived parts: SYSTEM_PROMPT, XML_COT_FORMAT, extract_hash_answer, extract_xml_answer, count_xml and the
+#   strict/soft format, integer and correctness reward functions.
+# Changes: type hints and docstrings; support for both string and chat-message completions; numeric
+#   normalisation of predicted and reference answers (normalise_number); negative integers accepted by
+#   int_reward_func; optional trailing newline in the strict format; count_xml penalises only the text after the
+#   last </answer>; dataset/evaluation helpers (build_prompt, format_gsm8k_example, score_responses) added.
 """
 Prompt formatting, answer extraction and rule-based reward functions for GRPO on GSM8K.
 
@@ -20,6 +33,7 @@ The reward functions follow the TRL (>= 0.24) ``GRPOTrainer`` convention:
 """
 
 import re
+from decimal import Decimal
 from typing import Any, Dict, List, Optional, Sequence, Union
 
 # A completion is either a string or a list of chat messages ({"role": ..., "content": ...}).
@@ -79,29 +93,38 @@ def extract_xml_answer(text: str) -> str:
     return answer.strip()
 
 
-_NUMBER_RE = re.compile(r"-?\d+(?:\.\d+)?")
+# A number is an optional minus sign, then digits with an optional decimal part ("12", "12.", "12.5") or a bare
+# decimal part (".5"), optionally followed by an exponent ("1e3", "2.5E-2"; at most 3 exponent digits).
+_NUMBER_RE = re.compile(r"-?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d{1,3}(?!\d))?")
+# A comma between a digit and exactly three digits is a thousands separator ("1,234,567"); other commas
+# (e.g. "3,4" or "3, 4") separate numbers and are kept.
+_THOUSANDS_SEP_RE = re.compile(r"(?<=\d),(?=\d{3}(?!\d))")
 
 
 def normalise_number(text: Optional[str]) -> Optional[str]:
     """
     Normalise a numeric answer so that equivalent spellings compare equal.
 
-    Removes thousands separators, currency/percent signs and surrounding text, then takes the last number in
-    the string. Integral floats are written without decimals ("42.0" -> "42"). Returns None if no number is found.
+    Removes thousands separators, currency/percent signs and surrounding text, maps the unicode minus sign
+    (U+2212) to "-", then takes the last number in the string. The number is parsed exactly with Decimal and
+    written in plain notation without trailing zeros or an exponent, so the result is idempotent
+    (normalise_number(normalise_number(x)) == normalise_number(x)). Returns None if no number is found.
 
     Examples:
-        "1,234" -> "1234", "$18." -> "18", "The answer is 7 apples" -> "7", "3.50" -> "3.5"
+        "1,234" -> "1234", "$18." -> "18", "The answer is 7 apples" -> "7", "3.50" -> "3.5", ".5" -> "0.5",
+        unicode minus + "3" -> "-3", "1e3" -> "1000", "1234567.5" -> "1234567.5"
     """
     if text is None:
         return None
-    cleaned = text.replace(",", "").replace("$", "").replace("%", "").strip()
+    cleaned = text.replace("\u2212", "-")
+    cleaned = _THOUSANDS_SEP_RE.sub("", cleaned).replace("$", "").replace("%", "").strip()
     matches = _NUMBER_RE.findall(cleaned)
     if not matches:
         return None
-    value = float(matches[-1])
-    if value.is_integer():
-        return str(int(value))
-    return f"{value:g}"
+    value = Decimal(matches[-1]).normalize()
+    if value == 0:
+        value = Decimal(0)  # "-0" and "0.00" -> "0"
+    return format(value, "f")
 
 
 def completion_to_text(completion: Completion) -> str:
@@ -158,8 +181,10 @@ def soft_format_reward_func(
 
 def count_xml(text: str) -> float:
     """
-    Dense format reward: 0.125 for each of the four tags appearing exactly once (in its own line),
-    minus a small penalty for text trailing after </answer> (discourages rambling after the answer).
+    Dense format reward: 0.125 for each of the four tags appearing exactly once (on its own line),
+    minus 0.001 per character of text after the last </answer> (surrounding whitespace ignored), to discourage
+    rambling after the answer. A trailing newline after </answer> is therefore not penalised, and neither is any
+    text before </answer> (e.g. a long reasoning).
     """
     score = 0.0
     if text.count("<reasoning>\n") == 1:
@@ -168,10 +193,11 @@ def count_xml(text: str) -> float:
         score += 0.125
     if text.count("\n<answer>\n") == 1:
         score += 0.125
-        score -= len(text.split("\n</answer>\n")[-1]) * 0.001
     if text.count("\n</answer>") == 1:
         score += 0.125
-        score -= (len(text.split("\n</answer>")[-1]) - 1) * 0.001
+    if "</answer>" in text:
+        tail = text.rsplit("</answer>", 1)[1]
+        score -= len(tail.strip()) * 0.001
     return score
 
 

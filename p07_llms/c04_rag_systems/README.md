@@ -27,6 +27,8 @@ gitignored) and put the PDF and Word (`.docx`) documents to be queried there, e.
 from https://www.finma.ch/en/documents/. The documents are indexed into the Qdrant collection `finma_docs` on the
 first run only; delete the collection (Qdrant dashboard at `http://localhost:<QDRANT_PORT_HOST>/dashboard`) to
 re-index after changing the documents. The same collection is used by the agents in `p08_agents`.
+The PDF and Word files are parsed by LangChain's `PyPDFLoader` and `Docx2txtLoader`, which need the `pypdf` and
+`docx2txt` packages (both are in `conda_env_gzh_llm4.yml` and in the `p08_agents` env).
 
 Run the examples from the repository root (the scripts load `p07_llms/c04_rag_systems/.env` relative to it):
 

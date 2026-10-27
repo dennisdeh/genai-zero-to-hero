@@ -9,9 +9,13 @@ Start the local Ollama server and pull a model (once):
 
 ```bash
 docker compose -f p07_llms/c01_running_llms/s01_ollama/docker-compose.yml up -d
-docker exec -it gzh_ollama ollama pull qwen3:4b    # or any model from https://ollama.com/search
+docker exec -it gzh_ollama ollama pull qwen3       # = qwen3:latest (8B), the model main_ollama.py requests
 curl http://localhost:07011/api/tags               # lists the installed models
 ```
+
+Any other model from https://ollama.com/search works as well (e.g. the smaller `qwen3:4b`), but then set
+`model` in `s01_ollama/main_ollama.py` to that exact tag: the script requests `qwen3`, which only resolves to
+`qwen3` / `qwen3:latest`.
 
 Without an NVIDIA GPU (and the NVIDIA Container Toolkit), remove the `deploy:` block from the compose file;
 Ollama then runs on the CPU.

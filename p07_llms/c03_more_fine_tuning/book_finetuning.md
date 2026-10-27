@@ -47,7 +47,8 @@ little loss of quality compared with 16-bit fine-tuning.
 - PEFT is the default choice for both supervised fine-tuning and reinforcement learning of LLMs on modest hardware.
 
 #### Example: supervised fine-tuning of GPT OSS with Unsloth
-`s00_peft_unsloth/main_gpt_oss_peft_unsloth.py` loads `unsloth/gpt-oss-20b` in 4-bit with
+`s00_peft_unsloth/main_gpt_oss_peft_unsloth.py` loads GPT OSS 20B in 4-bit (by default the pre-quantised
+checkpoint `unsloth/gpt-oss-20b-unsloth-bnb-4bit`, which downloads faster than `unsloth/gpt-oss-20b`) with
 `FastLanguageModel.from_pretrained(..., load_in_4bit=True)`, adds LoRA adapters with
 `FastLanguageModel.get_peft_model(model, r=8, lora_alpha=16, target_modules=[...])` and trains them with TRL's
 `SFTTrainer` on a finance question-answer data set. With `train_on_responses_only` the loss is computed only on the
@@ -156,7 +157,8 @@ The walkthrough:
    - `correctness_reward_func`: 2.0 if the number in `<answer>` equals the reference (the verifiable task reward),
    - `int_reward_func`: 0.5 if the answer is a plain integer,
    - `strict_format_reward_func` / `soft_format_reward_func`: 0.5 each for following the template exactly / loosely,
-   - `xmlcount_reward_func`: 0.125 per correctly placed tag, minus a small penalty for text after `</answer>`.
+   - `xmlcount_reward_func`: 0.125 per correctly placed tag, minus a small penalty (0.001 per character) for text
+     after the final `</answer>`; a trailing newline or a long reasoning is not penalised.
 
    The small shaping rewards give a learning signal early on, when hardly any answer is both correct and well
    formatted; correctness dominates so the format cannot be "hacked" at the expense of the task. The functions are
@@ -164,8 +166,13 @@ The walkthrough:
 4. **Before/after evaluation**: the same 20 test questions are answered greedily before and after training, and
    accuracy and format compliance are reported. Because $B = 0$ at initialisation, the "before" model is the base model.
 5. **Training**: `GRPOTrainer` with `GRPOConfig(num_generations=4, max_prompt_length=256, max_completion_length=768,
-   beta=0.04, learning_rate=5e-6, max_steps=250, use_vllm=False)`. Each step samples 4 completions for one prompt,
-   scores them, computes group-relative advantages and updates the adapters. The logged `reward` and
+   beta=0.04, loss_type="bnpo", learning_rate=5e-6, max_steps=250, use_vllm=False)`. Each step samples 4
+   completions for one prompt, scores them, computes group-relative advantages and updates the adapters with the
+   clipped objective plus the KL penalty ($\beta = 0.04$) shown above. `loss_type="bnpo"` averages the loss over all
+   completion tokens of the batch instead of per completion ($1/|o_i|$), which removes the length bias mentioned
+   above. TRL's default `"dapo"` would normalise the same way here, but Unsloth then also switches on the other DAPO
+   settings (asymmetric clipping with $\epsilon_{\text{high}} = 0.28$, masking of truncated completions) and
+   recommends dropping the KL term ($\beta = 0$), so the script sets the loss type explicitly. The logged `reward` and
    `rewards/<function>/mean` columns show the format rewards rising first and correctness later.
 6. **Saving**: only the LoRA adapters (plus tokeniser and metrics) are saved to `outputs/grpo_lora_<timestamp>`;
    setting `training = False` reloads them for inference.

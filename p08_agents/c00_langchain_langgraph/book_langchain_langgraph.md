@@ -3,8 +3,11 @@
 This chapter puts the concepts of the introduction into code. The sections build up step by step: graphs without
 any LLM (s00), single agents with tools, memory and human approval (s01), an agent that decides itself when to
 retrieve documents (s02), two multi-agent architectures - supervisor (s03) and swarm (s04) - and an agent with
-long-term memory (s05). All agents run against a local Ollama model (`qwen3:8b`) through the `get_llm` helper of
-chapter p07/c01; the retrieval agents reuse the FINMA document collection in Qdrant from chapter p07/c04.
+long-term memory (s05). All agents run against a local Ollama model through the `get_llm` helper of chapter
+p07/c01: from `main_6` of s01 onwards the scripts request `qwen3:8b` explicitly, while `main_1` to `main_5` of s01
+call `get_llm()` without a model name and therefore use `OLLAMA_MODEL` if it is set, otherwise the first model
+installed on the Ollama server. The retrieval agents reuse the FINMA document collection in Qdrant from chapter
+p07/c04.
 
 ### LangGraph in a nutshell
 
@@ -46,14 +49,19 @@ text (`draw_mermaid()`), which can be viewed at https://mermaid.live.
 - `main_2_simple_chat_memory.py`: the same graph, but the loop keeps appending to the `messages` list and sends the
   whole history every time - the simplest form of short-term memory (and the reason why long conversations
   eventually exceed the context window).
-- `main_3_simple_tools.py`: the **ReAct loop** built by hand. Two `@tool` functions (sum and multiplication of a
-  list) are bound to the model with `llm.bind_tools`; the model either answers or returns `tool_calls`. A
-  conditional edge routes to a `ToolNode`, which executes the calls and appends `ToolMessage`s, and an edge leads
-  back to the model, until it answers without tool calls. The question "multiply 2, 3, 4, add 1, multiply by 4"
-  needs several rounds.
-- `main_4_simple_stock_analyser.py` and `main_5_simple_stock_analyser_chat.py`: the same pattern with a mock
-  stock-analysis tool; the chat version compiles the graph with an `InMemorySaver` checkpointer, so the history
-  is stored per `thread_id` by LangGraph instead of by the calling code.
+- `main_3_simple_tools.py`: **tool calling** built by hand. Two `@tool` functions (sum and multiplication of a
+  list) are bound to the model with `llm.bind_tools`; the model either answers or returns `tool_calls`. The
+  conditional edge `determine_loop` routes to a `ToolNode`, which executes the calls and appends `ToolMessage`s -
+  but the graph has no edge from the `ToolNode` back to the model, so it ends right after this single round of
+  tool calls: the printed stream shows the model's tool call(s) and the tool results, and the model never sees
+  the results or writes a final answer. The question "multiply 2, 3, 4, add 1, multiply by 4" needs several
+  rounds (each step depends on the previous result), which makes this limitation visible.
+- `main_4_simple_stock_analyser.py` and `main_5_simple_stock_analyser_chat.py`: the complete **ReAct loop** with a
+  mock stock-analysis tool. The additional edge `add_edge("tools", "chatbot")` sends the tool results back to the
+  model, which can then call further tools or answer; the loop ends when the model replies without tool calls
+  (adding the same edge to `main_3` lets it solve the multi-step calculation). The chat version compiles the graph
+  with an `InMemorySaver` checkpointer, so the history is stored per `thread_id` by LangGraph instead of by the
+  calling code.
 - `main_6_math_agent_hitl.py`: `create_agent` with `HumanInTheLoopMiddleware`. Calls of `tool_multiplication` are
   **interrupted** before execution; the script shows the requested action and asks the user to approve, edit (new
   values) or reject it, and resumes the graph with `Command(resume={"decisions": [...]})`. Interrupts require a
