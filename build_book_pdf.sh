@@ -23,6 +23,25 @@ mkdir -p "$OUTPUT_DIR"
 
 TMP_FRONT_MATTER="$(mktemp)"
 TMP_HEADER_TEX="$(mktemp)"
+TMP_LUA_FILTER="$(mktemp --suffix=.lua)"
+
+# -------------------------------------------------------------------
+# Pandoc filter: allow line breaks in long inline code (file paths, module names)
+# after "/", "." and "_", so that they do not run off the page
+# -------------------------------------------------------------------
+cat > "$TMP_LUA_FILTER" <<'EOF'
+local map = {
+  ["\\"] = "\\textbackslash{}", ["{"] = "\\{", ["}"] = "\\}", ["#"] = "\\#",
+  ["$"] = "\\$", ["%"] = "\\%", ["&"] = "\\&", ["~"] = "\\textasciitilde{}",
+  ["^"] = "\\textasciicircum{}",
+  ["_"] = "\\_\\allowbreak{}", ["/"] = "/\\allowbreak{}", ["."] = ".\\allowbreak{}",
+}
+function Code(el)
+  if not FORMAT:match("latex") then return nil end
+  local text = el.text:gsub(".", function(c) return map[c] or c end)
+  return pandoc.RawInline("latex", "\\texttt{" .. text .. "}")
+end
+EOF
 
 # -------------------------------------------------------------------
 # LaTeX page/header/footer configuration
@@ -45,6 +64,12 @@ cat > "$TMP_HEADER_TEX" <<EOF
 
 \\renewcommand{\\headrulewidth}{0.4pt}
 \\renewcommand{\\footrulewidth}{0pt}
+
+% Avoid lines running into the margin: more flexible spacing, and wrap long lines in code blocks
+\\setlength{\\emergencystretch}{3em}
+\\usepackage{fvextra}
+\\DefineVerbatimEnvironment{Highlighting}{Verbatim}{breaklines,breakanywhere,commandchars=\\\\\\{\\}}
+\\RecustomVerbatimEnvironment{verbatim}{Verbatim}{breaklines,breakanywhere}
 EOF
 
 # -------------------------------------------------------------------
@@ -98,8 +123,11 @@ pandoc \
   --number-sections \
   --pdf-engine=xelatex \
   --include-in-header="$TMP_HEADER_TEX" \
+  --lua-filter="$TMP_LUA_FILTER" \
+  -V monofont="DejaVu Sans Mono" \
+  -V monofontoptions="Scale=0.85" \
   -o "$OUTPUT_PDF"
 
-rm "$TMP_FRONT_MATTER" "$TMP_HEADER_TEX"
+rm "$TMP_FRONT_MATTER" "$TMP_HEADER_TEX" "$TMP_LUA_FILTER"
 
 echo "PDF generated: $OUTPUT_PDF"
