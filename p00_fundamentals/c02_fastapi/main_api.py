@@ -87,6 +87,9 @@ def predict_batch(
     batch: BatchPredictionRequest, bundle: ModelDep, settings: SettingsDep
 ) -> BatchPredictionResponse:
     """Classify several flowers in one request (more efficient than many single requests)."""
+    # the schema already rejects more than MAX_INSTANCES_PER_REQUEST flowers (HTTP 422) during validation;
+    # the configurable, lower MAX_BATCH_SIZE is checked here (HTTP 413). Neither limits the size of the
+    # request body itself: that belongs in the server or reverse proxy (e.g. client_max_body_size in nginx).
     n = len(batch.instances)
     if n > settings.max_batch_size:
         raise HTTPException(
@@ -127,7 +130,8 @@ def create_app(model_dir: str | None = None) -> FastAPI:
             meta = app.state.model_bundle.metadata
             logger.info("Loaded model %s v%s from %s", meta.model_name, meta.version, settings.model_dir)
         except FileNotFoundError as e:
-            # keep the process alive (liveness OK), but report "not ready" until a model is available
+            # keep the process alive (liveness OK), but report "not ready": the model is only loaded here at
+            # start-up, so the pod/container must be restarted (or replaced) once MODEL_DIR is fixed
             app.state.model_bundle = None
             logger.error("Could not load model: %s", e)
         yield
@@ -191,5 +195,5 @@ if __name__ == "__main__":
         app,
         host=os.getenv("HOST", "127.0.0.1"),
         port=int(os.getenv("PORT", "5000")),
-        log_level=os.getenv("LOG_LEVEL", "info").lower(),
+        log_level=Settings.from_env().log_level.lower(),  # validated, see utils/config.py
     )

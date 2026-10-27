@@ -86,23 +86,33 @@ def evaluate(name: str, y_true: np.ndarray, y_pred: np.ndarray) -> dict:
 
 
 def plot_regularisation_paths(X: np.ndarray, y: np.ndarray, feature_names: list[str], path: str) -> None:
-    """Plot Ridge and Lasso coefficient paths as a function of the regularisation strength alpha."""
-    alphas = np.logspace(-3, 3, 60)
+    """
+    Plot Ridge and Lasso coefficient paths as a function of the regularisation strength alpha.
+
+    Both use scikit-learn's conventions, which differ: Ridge minimises ||y - Xw||^2 + alpha ||w||^2 (summed loss),
+    Lasso minimises 1/(2n) ||y - Xw||^2 + alpha ||w||_1 (mean loss), so the two alpha axes are not comparable.
+    """
+    ridge_alphas = np.logspace(-1, 5.5, 60)
     ridge_coefs = []
-    for a in alphas:
-        # closed-form ridge on standardised features: (X^T X + n*alpha I)^{-1} X^T y (y centred)
-        n, p = X.shape
-        ridge_coefs.append(np.linalg.solve(X.T @ X + n * a * np.eye(p), X.T @ (y - y.mean())))
+    p = X.shape[1]
+    for a in ridge_alphas:
+        # closed-form ridge on standardised features (sklearn convention): (X^T X + alpha I)^{-1} X^T y (y centred)
+        ridge_coefs.append(np.linalg.solve(X.T @ X + a * np.eye(p), X.T @ (y - y.mean())))
     ridge_coefs = np.array(ridge_coefs)
     lasso_alphas, lasso_coefs, _ = lasso_path(X, y - y.mean(), alphas=np.logspace(-2, 1.5, 60))
 
     fig, axes = plt.subplots(1, 2, figsize=(13, 5))
     for j, name in enumerate(feature_names):
-        axes[0].plot(alphas, ridge_coefs[:, j], label=name)
+        axes[0].plot(ridge_alphas, ridge_coefs[:, j], label=name)
         axes[1].plot(lasso_alphas, lasso_coefs[j], label=name)
-    for ax, title in zip(axes, ["Ridge (L2): coefficients shrink smoothly", "Lasso (L1): coefficients hit zero"]):
+    titles = ["Ridge (L2): coefficients shrink smoothly", "Lasso (L1): coefficients hit zero"]
+    xlabels = [
+        r"Ridge alpha:  $\|y - Xw\|^2 + \alpha\|w\|_2^2$  (sklearn Ridge)",
+        r"Lasso alpha:  $\frac{1}{2n}\|y - Xw\|^2 + \alpha\|w\|_1$  (sklearn Lasso)",
+    ]
+    for ax, title, xlabel in zip(axes, titles, xlabels):
         ax.set_xscale("log")
-        ax.set_xlabel("alpha (regularisation strength)")
+        ax.set_xlabel(xlabel)
         ax.set_ylabel("coefficient (standardised features)")
         ax.set_title(title)
         ax.axhline(0, color="black", lw=0.5)

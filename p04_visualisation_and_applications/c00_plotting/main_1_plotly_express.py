@@ -101,10 +101,16 @@ def scatter_matrix(iris: pd.DataFrame) -> go.Figure:
 
 
 def animated_bubbles(gapminder: pd.DataFrame) -> go.Figure:
-    """Gapminder-style animation over the years (press play)."""
+    """
+    Gapminder-style animation over the years (press play).
+
+    The axis ranges are fixed for all frames (otherwise the axes would jump) and wide enough for every
+    country and year, including Kuwait's very high GDP in the 1950s-70s and Rwanda's life expectancy
+    of 24 years in 1992.
+    """
     fig = px.scatter(gapminder, x="gdpPercap", y="lifeExp", size="pop", size_max=45, animation_frame="year",
-                     animation_group="country", hover_name="country", log_x=True, range_x=[200, 60_000],
-                     range_y=[25, 90], color_discrete_sequence=[CATEGORICAL[0]],
+                     animation_group="country", hover_name="country", log_x=True, range_x=[200, 150_000],
+                     range_y=[20, 90], color_discrete_sequence=[CATEGORICAL[0]],
                      labels={"gdpPercap": "GDP per capita (USD, log scale)", "lifeExp": "Life expectancy"},
                      title="Development of health and wealth 1952-2007 (press play)")
     return fig

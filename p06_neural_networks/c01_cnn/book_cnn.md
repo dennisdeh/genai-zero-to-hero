@@ -57,8 +57,9 @@ Pooling and strides grow the receptive field faster.
 
 The model in `main_1_cnn_classifier.py` is a small VGG-style network:
 $$ \underbrace{[\text{Conv-BN-ReLU} \times 2 \to \text{MaxPool}]}_{32 \text{ channels}} \to \underbrace{[\ldots]}_{64} \to \underbrace{[\text{Conv-BN-ReLU} \times 2]}_{128} \to \text{GAP} \to \text{Dropout} \to \text{Linear}. $$
-On 8×8 digits the resolution goes 8 → 4 → 2 → 1. Modern architectures add *residual connections*
-($\mathbf{y} = \mathbf{x} + F(\mathbf{x})$, ResNet), which make networks with hundreds of layers trainable.
+On 8×8 digits the resolution goes 8 → 4 → 2, then global average pooling reduces each map to a single value.
+Modern architectures add *residual connections* ($\mathbf{y} = \mathbf{x} + F(\mathbf{x})$, ResNet), which make
+networks with hundreds of layers trainable.
 
 ### Data augmentation
 The cheapest way to get more training data is to transform the existing images in ways that do not change
@@ -72,16 +73,26 @@ The training loop is the one from the MLP chapter (`train_one_epoch`, `evaluate`
 `p06_neural_networks/utils/torch_helpers.py`) plus:
 
 - **AdamW** with a **cosine annealing** learning-rate schedule and **label smoothing** (the target distribution
-  puts 0.95 on the true class instead of 1, which discourages over-confident predictions; it is also why the
-  loss does not go to zero).
+  with $\varepsilon = 0.05$ mixes the one-hot target with the uniform distribution over the $K=10$ classes, so it
+  puts $1-\varepsilon+\varepsilon/K = 0.955$ on the true class and $\varepsilon/K = 0.005$ on each other class
+  instead of 1 and 0; this discourages over-confident predictions and is also why the loss does not go to zero).
 - **Evaluation** on the held-out test set with scikit-learn's `classification_report` (precision, recall, F1 per
   class), a **confusion matrix** (which digits are confused with which) and a gallery of misclassified images –
   looking at errors is often the most informative step in improving a model.
-- **Checkpoints**: `save_checkpoint()` stores a dictionary with the model `state_dict`, the optimiser state, the
-  epoch, the hyper-parameters and the normalisation statistics. `load_checkpoint()` rebuilds the model from
-  the stored config and loads the weights with `torch.load(..., weights_only=True)`, which refuses to unpickle
-  arbitrary Python objects (never load untrusted pickles without it). The script evaluates the *reloaded* model
-  to prove the round trip works. Saving the optimiser state allows training to be resumed exactly.
+- **Checkpoints**: `save_checkpoint()` stores a dictionary with the model `state_dict`, the optimiser and
+  learning-rate scheduler states, the epoch, the hyper-parameters and the normalisation statistics – all of the
+  *same* epoch. That matters with early stopping: `restore_best()` rolls the weights back to the best epoch, so
+  the `EarlyStopping` helper also keeps copies of the optimiser state (Adam's moment estimates, step counts) and
+  the scheduler state from that epoch (`stopper.step(val_loss, model, epoch, optimiser, scheduler)`); saving the
+  last epoch's optimiser next to the best epoch's weights would make a checkpoint that cannot be resumed
+  consistently. `load_checkpoint()` rebuilds the model from the stored config and loads the weights with
+  `torch.load(..., weights_only=True)`, which refuses to unpickle arbitrary Python objects (never load untrusted
+  pickles without it); this protection relies on a patched PyTorch – versions up to 2.5.1 could still be made to
+  execute code with `weights_only=True` (CVE-2025-32434), so the environment file requires `torch>=2.6`. The
+  checkpoint therefore contains only tensors, numbers, strings and lists/dicts. The script evaluates the
+  *reloaded* model to prove the round trip works, and `restore_training_state()` shows how to resume: build the
+  optimiser and scheduler as before, load their states and continue at `epoch + 1` (a bit-identical
+  continuation would additionally need the random number generator states).
 
 Expect about 99 % test accuracy on the digits within a few dozen epochs (a logistic regression reaches about
 96 %) and about 85 % on Fashion-MNIST with a 10,000-image subset and only 5 epochs (shirts are the hardest class –

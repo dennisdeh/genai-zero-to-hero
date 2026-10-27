@@ -46,22 +46,28 @@ which the script saves to `outputs/linreg_residuals.png`:
 When there are many (correlated) features compared to the number of samples, the OLS coefficients get large and
 unstable and the model overfits. Regularisation adds a penalty on the size of the coefficients:
 
-- **Ridge (L2):** $\min_\beta \frac{1}{n}\lVert y - X\beta\rVert_2^2 + \alpha\lVert\beta\rVert_2^2$. Closed form
-  $\hat\beta = (X^\top X + n\alpha I)^{-1}X^\top y$; coefficients shrink smoothly towards zero but rarely become
-  exactly zero. Ridge handles correlated features gracefully by sharing the weight between them.
-- **Lasso (L1):** $\min_\beta \frac{1}{2n}\lVert y - X\beta\rVert_2^2 + \alpha\lVert\beta\rVert_1$. The corners of
+- **Ridge (L2):** $\min_\beta \lVert y - X\beta\rVert_2^2 + \alpha\lVert\beta\rVert_2^2$. Closed form
+  $\hat\beta = (X^\top X + \alpha I)^{-1}X^\top y$; coefficients shrink smoothly towards zero but rarely become
+  exactly zero. Ridge handles correlated features gracefully by sharing the weight between them. This is
+  scikit-learn's `Ridge` convention: the squared error is a *sum*, not a mean. With the mean-loss form
+  $\frac{1}{n}\lVert y - X\beta\rVert_2^2 + \alpha'\lVert\beta\rVert_2^2$ the same solution has $\alpha = n\alpha'$.
+- **Lasso (L1):** $\min_\beta \frac{1}{2n}\lVert y - X\beta\rVert_2^2 + \alpha\lVert\beta\rVert_1$ (scikit-learn's
+  `Lasso` convention, with a $\frac{1}{2n}$ factor - so Ridge and Lasso $\alpha$ values are not comparable). The corners of
   the L1 ball produce *sparse* solutions: many coefficients are exactly zero, so the Lasso performs feature selection.
   It is solved by coordinate descent.
 - **ElasticNet:** a mix $\alpha\left(\rho\lVert\beta\rVert_1 + \frac{1-\rho}{2}\lVert\beta\rVert_2^2\right)$ with
   `l1_ratio` $\rho$, combining sparsity with the stability of Ridge for groups of correlated features.
 
-The penalty treats all coefficients equally, so the features **must be standardised** first, and the intercept is
-not penalised. The regularisation strength $\alpha$ is chosen by cross-validation (`RidgeCV`, `LassoCV`,
+The penalty treats all coefficients equally, so the features **must be standardised** first. The intercept is not
+penalised: unlike in the OLS section, $X$ here has no column of ones and $\beta$ excludes the intercept, which is
+handled by centring $X$ and $y$ (scikit-learn does this internally). The regularisation strength $\alpha$ is chosen by cross-validation (`RidgeCV`, `LassoCV`,
 `ElasticNetCV`). From a Bayesian point of view, Ridge corresponds to a Gaussian prior on the coefficients and Lasso
 to a Laplace prior.
 
 To make regularisation matter, the script expands the 10 diabetes features to all 65 degree-2 polynomial terms
-(squares and pairwise products) for only ~330 training samples. Typical results on the test set:
+(squares and pairwise products) for only ~330 training samples. `RidgeCV` picks $\alpha\approx105$ (in the sum-loss
+convention above, i.e. $\alpha'\approx0.3$ per sample) and `LassoCV` $\alpha\approx0.55$. Typical results on the test
+set:
 
 | model | RMSE | $R^2$ |
 |---|---|---|
@@ -73,7 +79,7 @@ To make regularisation matter, the script expands the 10 diabetes features to al
 The unregularised polynomial model overfits; the regularised versions recover (and slightly beat) the simple model,
 and the Lasso does so with only 14 of 65 terms. The *regularisation paths* in
 `outputs/linreg_regularisation_paths.png` show how the coefficients shrink as $\alpha$ grows: smoothly for Ridge,
-one after another to exactly zero for the Lasso.
+one after another to exactly zero for the Lasso (the two x-axes use the two different $\alpha$ conventions).
 
 ### Logistic regression
 For binary classification ($y\in\{0,1\}$) logistic regression models the log-odds as a linear function,
@@ -84,8 +90,10 @@ $$L(\beta) = -\frac{1}{n}\sum_{i=1}^n \left[y_i\log p_i + (1-y_i)\log(1-p_i)\rig
 There is no closed-form solution, but the loss is convex, so solvers such as L-BFGS, Newton methods or SAGA find the
 global optimum. A coefficient $\beta_j$ is the change in log-odds for a one-unit increase of feature $j$ (on
 standardised features: per standard deviation); $e^{\beta_j}$ is the corresponding odds ratio. In scikit-learn the
-penalty strength is parameterised by $C = 1/\alpha$ (small $C$ = strong regularisation) and the L1/L2 mix by
-`l1_ratio` (the older `penalty` argument is deprecated).
+penalty strength is parameterised by an *inverse* strength $C$ (small $C$ = strong regularisation): scikit-learn
+minimises $C\sum_i \ell_i + \frac{1}{2}\lVert\beta\rVert_2^2$ with the *summed* log-loss, which - after dividing
+by $nC$ - is the mean loss above plus $\frac{\alpha}{2}\lVert\beta\rVert_2^2$ with $\alpha = 1/(nC)$. The L1/L2 mix
+is set by `l1_ratio` (the older `penalty` argument is deprecated).
 
 `main_2_logistic_regression.py` predicts whether a breast tumour is malignant from 30 features of a cell-nucleus
 image. We relabel the data so that 1 = malignant: missing a cancer (false negative) is the costly error, so it
@@ -167,19 +175,29 @@ kernel $k(x, x') = \exp(-\gamma\lVert x - x'\rVert^2)$ produces smooth non-linea
 radius of influence of each support vector. Large $C$ and $\gamma$ give wiggly, overfitting boundaries (training
 accuracy 1.0, test 0.83 on the moons), small values give smooth ones. SVMs require standardised features,
 are tuned with a grid search over $C$ and $\gamma$, scale roughly quadratically with the number of samples, and do
-not output probabilities by default (`SVC(probability=True)` adds an internal Platt calibration).
+not output probabilities (`decision_function` returns a signed distance to the boundary). To get calibrated
+probabilities, wrap the SVM in `CalibratedClassifierCV` (Platt/sigmoid or isotonic scaling, see the calibration
+section); the older `SVC(probability=True)` is deprecated since scikit-learn 1.9.
 
 ### Comparing model families fairly
 The last step of `main_3_trees_rf_svm.py` evaluates all model families with **the same** 5-fold stratified splits on
-the breast cancer training data:
+the breast cancer training data. Models whose hyperparameters are tuned must not be scored with the same folds that
+chose their hyperparameters: `svm_search.best_score_` is the maximum over 16 candidate scores and therefore
+optimistically biased. The script uses **nested cross-validation** instead - the `GridSearchCV` object itself is
+passed to `cross_validate`, so each outer fold re-runs the search on its own training part (inner 5-fold CV) and
+scores the winner on the untouched outer fold. Logistic regression is tuned over $C$ (L2 penalty), the tree over
+`ccp_alpha`, the SVM over $C$ and $\gamma$; the random forest runs with its defaults.
 
 | model | CV accuracy | CV ROC-AUC |
 |---|---|---|
-| logistic regression | 0.972 $\pm$ 0.016 | 0.992 $\pm$ 0.008 |
-| decision tree (pruned) | 0.937 $\pm$ 0.018 | 0.936 $\pm$ 0.016 |
+| logistic regression (tuned, nested) | 0.974 $\pm$ 0.014 | 0.991 $\pm$ 0.009 |
+| decision tree (pruned, nested) | 0.925 $\pm$ 0.032 | 0.928 $\pm$ 0.028 |
 | random forest | 0.962 $\pm$ 0.019 | 0.988 $\pm$ 0.009 |
-| RBF SVM (tuned) | 0.976 $\pm$ 0.011 | 0.995 $\pm$ 0.005 |
+| RBF SVM (tuned, nested) | 0.974 $\pm$ 0.012 | 0.994 $\pm$ 0.005 |
 
+Nested CV costs one hyperparameter search per outer fold (here 5 searches instead of 1, still a few seconds); the
+nested SVM accuracy (0.974) is slightly below the non-nested `best_score_` (0.977), and the pruned tree loses more
+(0.925 vs 0.937 when its `ccp_alpha` is chosen on all the training data first).
 On this small, almost linearly separable dataset the linear model and the SVM are best, a single tree is clearly
 worst, and the differences between the top models are within one standard deviation - a reminder to report the
 spread of CV scores and to prefer the simpler model when scores are tied. On larger tabular datasets with

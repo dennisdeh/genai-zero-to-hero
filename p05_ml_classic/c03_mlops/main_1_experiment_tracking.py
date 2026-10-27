@@ -38,9 +38,12 @@ from threadpoolctl import threadpool_limits
 from p05_ml_classic.c03_mlops.utils.mlflow_utils import EXPERIMENT_NAME, SEED, load_churn_splits, setup_mlflow
 
 DATA_VERSION = "synthetic-churn-v1-seed0"
-# MLflow saves scikit-learn models with skops (a safer alternative to pickle): on loading, only types that were
-# explicitly trusted are reconstructed. Plain sklearn estimators are trusted by default; the low-level tree
-# structures below are not, so we declare them (they are stored in the model's MLmodel file for loading).
+# MLflow saves scikit-learn models with skops instead of pickle: on loading, only types on an allow-list are
+# reconstructed. Plain sklearn estimators are on skops' default list; the low-level tree structures below are not,
+# so we declare them. NOTE: MLflow stores this list in the model's own MLmodel file and reads it back at load time,
+# so a tampered model can whitelist dangerous types - skops is NOT a security boundary here. Loading any MLflow
+# model can execute code: only load models from a registry/artifact store you trust, and set
+# MLFLOW_ALLOW_PICKLE_DESERIALIZATION=false where models should never be deserialized.
 SKOPS_TRUSTED_TYPES = {
     "random_forest": ["sklearn.tree._tree.Tree"],
     "hist_gradient_boosting": ["sklearn.ensemble._hist_gradient_boosting.predictor.TreePredictor"],

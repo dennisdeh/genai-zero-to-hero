@@ -44,8 +44,12 @@ never their values - so that the scripts can explain what is missing instead of 
 4. Download: `api.dataset_download_files(ref, path=..., unzip=False)` stores a zip archive;
    `api.competition_download_files("titanic", path=...)` does the same for a competition.
 5. Unzip safely: archives from the internet are untrusted input. A crafted archive can contain member names
-   such as `../../.bashrc` that would be written outside the target folder ("zip slip"). `utils/files.py`
-   resolves every target path and refuses to extract members that escape the destination.
+   such as `../../.bashrc` that would be written outside the target folder ("zip slip"). Python's
+   `ZipFile.extract()` already neutralises this by stripping absolute paths and `..` components, but many
+   other extractors (hand-written `open()`/`write()` loops, older tar or zip tools) do not. `utils/files.py`
+   therefore adds an explicit check as defence in depth: it resolves every target path and refuses the whole
+   archive if any member would escape the destination - a crafted archive is a reason to stop, not to
+   silently rewrite paths.
 6. Load and summarise every CSV file (and every table of a bundled SQLite database) with pandas: shape,
    dtypes, missing values, numeric summary and the target distribution.
 

@@ -91,8 +91,15 @@ Two different questions are asked:
 - **Readiness** (`GET /ready`): can the service handle requests right now, i.e. is the model loaded?
   If not, no traffic should be routed to it - but restarting it would not necessarily help.
 
-Separating the two avoids restart loops while a large model is loading and is used directly by the Kubernetes
-probes in p01.
+Separating the two means that a service without a usable model (here: model files missing) is taken out of the
+load balancer instead of being restarted over and over, and it is used directly by the Kubernetes probes in p01.
+Note that in this implementation the model is loaded in the lifespan, i.e. *before* Uvicorn starts accepting
+connections: while a large model is loading, neither `/health` nor `/ready` answers. A liveness probe would then
+fail and restart the container in a loop; what prevents this is the *startup probe* in p01, which gives the
+application time to start before the liveness probe begins. (Alternatively, the model can be loaded in a
+background task, so `/health` answers immediately and `/ready` reports 503 until loading has finished.)
+Since the model is only loaded at start-up, a "not ready" instance becomes ready only after a restart, e.g. once
+`MODEL_DIR` has been fixed.
 
 #### Versioned endpoints
 The prediction endpoints live under the prefix `/v1` (an `APIRouter`):
@@ -106,8 +113,13 @@ while existing clients keep using `/v1`. Note that the *API version* (the contra
 behind the same API version. Every prediction response contains the model version for traceability.
 
 Batch prediction is more efficient than many single requests because the HTTP overhead is paid once and the
-model processes a matrix in a single vectorised call. Its size is limited by `MAX_BATCH_SIZE` to protect the
-service from excessively large requests (HTTP 413 otherwise).
+model processes a matrix in a single vectorised call. Its size is limited at two levels: the schema declares
+`Field(max_length=MAX_INSTANCES_PER_REQUEST)` (10,000), so larger batches are rejected during validation with
+HTTP 422 like any other invalid input, and the endpoint enforces the configurable, lower `MAX_BATCH_SIZE`
+(default 1,000) with HTTP 413 (Content Too Large). Both checks run only after the request body has been received
+and parsed as JSON, so they cap the validation and inference work, but do not protect against huge request
+bodies: a limit on the body size belongs in the server or reverse proxy in front of the API (e.g.
+`client_max_body_size` in nginx, or the request size limit of an API gateway or load balancer).
 
 #### Sync or async endpoints?
 FastAPI accepts both `def` and `async def` endpoints. An `async def` endpoint runs directly on the event loop,
@@ -126,7 +138,10 @@ request IDs and metrics (e.g. Prometheus).
 
 All settings (`MODEL_DIR`, `LOG_LEVEL`, `MAX_BATCH_SIZE`) are read from environment variables, following the
 *twelve-factor app* principle of storing configuration in the environment. The same code then runs unchanged
-locally, in a container and in Kubernetes, where the variables are set by a ConfigMap.
+locally, in a container and in Kubernetes, where the variables are set by a ConfigMap. The values are validated
+when the settings are created: an unknown `LOG_LEVEL` falls back to `INFO` with a warning (otherwise
+`logging.basicConfig` would raise an error at import time and the container would end up in a crash loop),
+while an invalid `MAX_BATCH_SIZE` stops the start-up with a clear error message.
 
 The application is created by a factory function `create_app(model_dir=None)`. The module-level
 `app = create_app()` is what Uvicorn imports, while tests create their own instances pointing at a temporary

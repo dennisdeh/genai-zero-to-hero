@@ -46,12 +46,29 @@ def as_chat(text: str) -> list:
         ("3.50", "3.5"),
         ("42.0", "42"),
         ("-5", "-5"),
+        (".5", "0.5"),
+        ("-.5", "-0.5"),
+        ("\u22123", "-3"),  # unicode minus sign
+        ("1e3", "1000"),
+        ("2.5E-2", "0.025"),
+        ("1234567.5", "1234567.5"),  # no loss of precision / no exponent notation
+        ("1,234,567", "1234567"),
+        ("$1,200.00", "1200"),
+        ("3,4", "4"),  # not a thousands separator -> two numbers, the last one wins
+        ("-0", "0"),
+        ("0.000", "0"),
         ("no number here", None),
         (None, None),
     ],
 )
 def test_normalise_number(raw, expected):
     assert normalise_number(raw) == expected
+
+
+@pytest.mark.parametrize("raw", ["1234567.5", "0.025", "1e3", "-3.50", "1,234", "0.1", "123456789012345678.25"])
+def test_normalise_number_is_idempotent(raw):
+    once = normalise_number(raw)
+    assert normalise_number(once) == once
 
 
 def test_extract_hash_answer():
@@ -106,6 +123,33 @@ def test_count_xml():
     # trailing text after </answer> is penalised
     assert count_xml(PERFECT + "some extra rambling") < count_xml(PERFECT)
     assert xmlcount_reward_func(None, [as_chat(PERFECT)]) == [pytest.approx(0.5)]
+
+
+def test_count_xml_trailing_newline_is_optional():
+    # PERFECT ends in "</answer>\n"; once the EOS token is stripped the final newline is often missing
+    without_newline = PERFECT.rstrip("\n")
+    assert without_newline.endswith("\n</answer>")
+    assert count_xml(without_newline) == pytest.approx(count_xml(PERFECT)) == pytest.approx(0.5)
+    # a long reasoning before </answer> is not penalised
+    long_reasoning = XML_COT_FORMAT.format(reasoning="step\n" * 500, answer="7").rstrip("\n")
+    assert count_xml(long_reasoning) == pytest.approx(0.5)
+    # only the text after the last </answer> counts towards the penalty
+    assert count_xml(without_newline + "\nabc") == pytest.approx(0.5 - 0.003)
+
+
+def test_correct_long_answer_beats_wrong_short_answer():
+    # correct answer with a long (~2.4k character) reasoning and no trailing newline
+    correct_long = XML_COT_FORMAT.format(reasoning="Let me think step by step. " * 90, answer="7").rstrip("\n")
+    wrong_short = XML_COT_FORMAT.format(reasoning="3 + 4 = 8", answer="8")
+    assert len(correct_long) > 2000
+
+    def total(text):
+        return sum(f(None, [as_chat(text)], answer=["7"])[0] for f in REWARD_FUNCS)
+
+    assert total(correct_long) == pytest.approx(0.5 + 0.5 + 0.5 + 0.5 + 2.0)
+    assert total(correct_long) > total(wrong_short) + 1.5
+    for text in (correct_long, wrong_short):
+        assert total(text) == pytest.approx(total(text + "\n"))
 
 
 def test_all_reward_funcs_return_one_float_per_completion():

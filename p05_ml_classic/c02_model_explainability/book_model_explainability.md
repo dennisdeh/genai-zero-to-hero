@@ -62,14 +62,20 @@ values reproduces the model's log-odds to $10^{-14}$. Then:
 - **SHAP interaction values** - a matrix $\Phi_{ij}$ per sample whose diagonal holds the main effects and whose
   off-diagonal entries split each pairwise interaction equally between the two features. The strongest pairs found
   are contract $\times$ monthly_charges and (third) has_fibre $\times$ support_calls - the two true interactions.
+  The second-strongest pair, contract $\times$ has_fibre (0.058), is *not* an interaction of the data-generating
+  process; fibre raises the monthly price by about 15, so the model likely routes part of the true contract
+  $\times$ price interaction through `has_fibre`. Interaction values describe the model, not the true process.
   The printed table shows that for $\ge 3$ calls the interaction term is positive for fibre customers and negative
   for the others. A Shapley value of a single feature always contains half of its interactions, which is why the
   dependence plot alone does not separate main effect and interaction.
 - **Waterfall plot** (`outputs/shap_waterfall_highest_risk.png`) - a local explanation of the highest-risk customer:
-  starting at the base value $\mathbb{E}[f(X)] \approx -1.19$ log-odds (about 23%), five support calls add $+1.35$,
+  starting at the base value $\mathbb{E}[f(X)] \approx -1.19$, the mean log-odds over the training data, five
+  support calls add $+1.35$,
   the month-to-month contract $+0.80$, age 73 $+0.68$, fibre $+0.49$ and the price $+0.43$, ending at $f(x)=2.94$
-  log-odds, a churn probability of 95%. Explanations like this can be shown to a customer-service agent next to the
-  score.
+  log-odds, a churn probability of 95%. Note that $\sigma(-1.19)\approx 23\%$ is *not* the mean predicted
+  probability: the sigmoid of a mean is not the mean of the sigmoids, and the mean predicted churn probability is
+  about 30% (equal to the base rate, 0.299). Explanations like this can be shown to a customer-service agent next to
+  the score.
 
 ### Permutation importance
 **Permutation importance** (Breiman, 2001; Fisher et al., 2019) measures how much a metric drops when the values of
@@ -115,7 +121,9 @@ probabilities, on which additive effects are distorted by the sigmoid).
 
 To make an interaction explicit, the script computes the PDP of `monthly_charges` separately within each contract
 group and of `support_calls` within fibre/non-fibre customers (`outputs/pdp_interactions.png`). The fitted slopes
-(0.043, 0.018 and 0.010 log-odds per unit of price) are close to the true values (0.04, 0.01, 0.01).
+for month-to-month (0.043 log-odds per unit of price) and two-year contracts (0.010) match the true values (0.04 and
+0.01); for one-year contracts the fitted slope (0.018) is almost twice the true 0.01. The PDP recovers the
+qualitative interaction - a much steeper price effect for month-to-month contracts - but not every slope exactly.
 
 Pitfalls of PDPs:
 

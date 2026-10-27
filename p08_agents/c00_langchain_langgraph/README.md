@@ -4,7 +4,9 @@
   - s00: none (no LLM is used)
   - s01 (`main_1` to `main_5`): an Ollama server reachable via `get_llm()`, i.e. by default the one from
     `p07_llms/c01_running_llms/s01_ollama/docker-compose.yml` on `http://localhost:07011` (or set
-    `OLLAMA_BASE_URL` to the Ollama service of this chapter's compose file)
+    `OLLAMA_BASE_URL` to the Ollama service of this chapter's compose file); these scripts pass no model name,
+    so they use `OLLAMA_MODEL` if set, otherwise the first installed model (use a tool-calling model such as
+    `qwen3` for `main_3` to `main_5`)
   - s01 (`main_6`), s02 - s05: `p08_agents/c00_langchain_langgraph/docker-compose.yml`
 - Environment variables: set in the `.env` file in this folder, which is read both by Docker Compose and by the
   scripts (`dotenv.load_dotenv("p08_agents/c00_langchain_langgraph/.env")`, relative to the repository root):
@@ -76,8 +78,8 @@ python -m p08_agents.c00_langchain_langgraph.s05_agents_with_memory.main_0_longt
 | `s00/main_very_simple_langgraph_looping.py` | the same with a loop: a node appends random numbers until a counter exceeds a threshold | no |
 | `s01/main_1_simple_chat.py` | one-node chat graph without memory | chat loop (Ctrl+C to quit) |
 | `s01/main_2_simple_chat_memory.py` | chat graph that keeps the conversation history | chat loop |
-| `s01/main_3_simple_tools.py` | ReAct loop: LLM with bound tools + `ToolNode` and a conditional edge back to the model | no |
-| `s01/main_4_simple_stock_analyser.py` | tool-calling agent with a (mock) stock analysis tool | no |
+| `s01/main_3_simple_tools.py` | LLM with bound tools + a conditional edge to a `ToolNode`; a single round of tool calls (no edge back to the model, so the graph ends after the tool results) | no |
+| `s01/main_4_simple_stock_analyser.py` | ReAct loop: tool-calling agent with a (mock) stock analysis tool and an edge from the tools back to the model | no |
 | `s01/main_5_simple_stock_analyser_chat.py` | the same as a chat with `InMemorySaver` checkpointing | chat loop |
 | `s01/main_6_math_agent_hitl.py` | `create_agent` with `HumanInTheLoopMiddleware`: approve, edit or reject a tool call, resume with `Command(resume=...)` | approval prompt |
 | `s02/main_rag_agent.py` | agentic RAG: the agent decides when to call a Qdrant retrieval tool over the FINMA documents (and a mock stock analysis tool) | no |

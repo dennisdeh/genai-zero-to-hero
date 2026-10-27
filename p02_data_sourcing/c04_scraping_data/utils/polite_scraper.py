@@ -37,7 +37,8 @@ class PoliteScraper:
     max_retries: int
         Number of retries for connection errors and the status codes 429, 500, 502, 503, 504.
     backoff_factor: float
-        Exponential back-off: sleep backoff_factor * 2**(retry-1) seconds between retries.
+        Exponential back-off (urllib3 2.x): the first retry happens immediately, retry n >= 2 waits
+        backoff_factor * 2**(n-1) seconds (0.5 -> 0s, 1s, 2s, ...); a Retry-After header takes precedence.
     timeout_s: float
         Timeout (connect and read) for each request.
     """
@@ -80,8 +81,9 @@ class PoliteScraper:
     def _load_robots(self) -> urllib.robotparser.RobotFileParser:
         """
         Download and parse robots.txt with our own session (so that the User-Agent, timeouts and proxies
-        apply). Semantics follow the standard library: a missing robots.txt (4xx) allows everything,
-        401/403 disallow everything.
+        apply). Semantics follow the standard library, which is stricter than RFC 9309: a missing robots.txt
+        (4xx) allows everything, but 401/403 disallow everything (the RFC would allow crawling for any 4xx).
+        A 5xx that persists after the retries raises, i.e. nothing is crawled (as the RFC requires).
         """
         rp = urllib.robotparser.RobotFileParser()
         url = urljoin(self.base_url, "/robots.txt")

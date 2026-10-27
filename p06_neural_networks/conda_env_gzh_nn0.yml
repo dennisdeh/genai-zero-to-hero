@@ -10,6 +10,7 @@ dependencies:
   - networkx
   - pip:
     # CPU/CUDA wheels from PyPI; for a specific CUDA version or a CPU-only build see https://pytorch.org/get-started/locally/
-    - torch
+    # torch>=2.6: torch.load(weights_only=True) in older versions is vulnerable to CVE-2025-32434
+    - torch>=2.6
     - torchvision
     - torch_geometric

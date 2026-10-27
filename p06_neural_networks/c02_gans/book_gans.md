@@ -29,11 +29,16 @@ the generated distribution, with the global optimum $p_g = p_{\text{data}}$ (whe
 
 ### Non-saturating loss
 In practice the generator's term $\log(1 - D(G(\mathbf{z})))$ is a poor training signal. Early in training the
-generator is bad, the discriminator rejects its samples confidently, $D(G(\mathbf{z})) \approx 0$, and the
-function $\log(1 - D)$ is flat there – the gradient *saturates* and the generator barely learns. Goodfellow et al.
-therefore proposed the **non-saturating** loss: instead of minimising $\log(1 - D(G(\mathbf{z})))$, the generator
-maximises $\log D(G(\mathbf{z}))$, i.e. it minimises
-$$ \mathcal{L}_G = -\mathbb{E}_{\mathbf{z}}\big[\log D(G(\mathbf{z}))\big], $$
+generator is bad and the discriminator rejects its samples confidently, $D(G(\mathbf{z})) \approx 0$. As a function
+of $D$, $\log(1 - D)$ is not flat there (its slope is $-1$ at $D = 0$); the problem is the sigmoid in front of it.
+The discriminator outputs a logit $l$ and $D = \sigma(l)$, and a confident rejection means a very negative $l$,
+where the sigmoid itself is flat. By the chain rule, with $\sigma'(l) = \sigma(l)(1-\sigma(l))$,
+$$ \frac{\partial}{\partial l} \log\big(1 - \sigma(l)\big) = -\sigma(l) \;\to\; 0 \quad \text{for } l \to -\infty, $$
+so the gradient that flows back through $l$ into the generator *saturates* and the generator barely learns.
+Goodfellow et al. therefore proposed the **non-saturating** loss: instead of minimising
+$\log(1 - D(G(\mathbf{z})))$, the generator maximises $\log D(G(\mathbf{z}))$, i.e. it minimises
+$$ \mathcal{L}_G = -\mathbb{E}_{\mathbf{z}}\big[\log D(G(\mathbf{z}))\big], \qquad
+   \frac{\partial}{\partial l}\big[-\log \sigma(l)\big] = -\big(1 - \sigma(l)\big) \;\to\; -1 \quad \text{for } l \to -\infty, $$
 which has the same fixed point but strong gradients exactly when the generator is losing. In code this is
 simply binary cross-entropy of the fake samples against the label "real":
 `F.binary_cross_entropy_with_logits(D(G(z)), ones)`. `generator_loss()` in `main_1_gan_2d.py` implements both
@@ -73,17 +78,22 @@ Widely used tricks (many from the DCGAN paper and Salimans et al. 2016):
 ### Experiment 1: a ring of Gaussians
 `main_1_gan_2d.py` uses the classic toy problem from the mode-collapse literature: a mixture of 8 Gaussians
 arranged on a circle. Being two-dimensional, the generated distribution can be plotted directly and two simple
-metrics can be computed: the number of modes that receive samples and the fraction of "high-quality" samples
-(within three standard deviations of a mode centre). Both $G$ and $D$ are MLPs with three hidden layers.
+metrics can be computed: the fraction of "high-quality" samples (within three standard deviations of a mode
+centre), which measures fidelity, and the number of modes covered, which measures diversity. A mode counts as
+covered only if at least 2.5 % of *all* generated samples are high-quality samples near it (a fifth of the 12.5 %
+a perfect generator would put there), so a generator that produces mostly garbage cannot score 8/8 with a few
+lucky samples; the two numbers should always be read together. Both $G$ and $D$ are MLPs with three hidden layers.
 Three set-ups are trained with the same seed and architecture:
 
 - **non_saturating** and **minimax** – both with the tricks above ($\beta_1=0.5$, learning rate $10^{-3}$, label
-  smoothing). Both cover all 8 modes after about 1,000 steps; the generated distribution first spreads around the
+  smoothing). Both cover all 8 modes by step 1,500 (minimax already at step 500, non-saturating has 7 of 8 at
+  step 1,000) and end with 93–95 % high-quality samples; the generated distribution first spreads around the
   ring and then concentrates on the modes. With these tricks even the minimax loss works on this small problem
   (try `--d-steps 5` to make the discriminator stronger and compare how the two losses cope).
 - **no_tricks** – a five times larger learning rate, the default $\beta_1 = 0.9$ and no label smoothing. The
   generator collapses onto a single mode at a time and hops between modes, often producing samples far away
-  from any mode in between: textbook mode collapse and instability.
+  from any mode in between (at most one mode covered at the printed checkpoints and 1 % high-quality samples at
+  the end): textbook mode collapse and instability.
 
 The snapshots (`outputs/gan_2d_snapshots.png`) and the coverage curves (`outputs/gan_2d_mode_coverage.png`)
 make the difference obvious at a glance.
@@ -106,11 +116,12 @@ norm uses its running statistics.
 
 **How good are the samples?** GAN evaluation is hard; for natural images the standard metrics are the Inception
 Score and the Fréchet Inception Distance (FID), which compare statistics of a pre-trained image network on
-real and generated samples. The script uses the same idea at toy scale: a logistic regression trained on real
-digits labels 2,000 generated images. If all ten digits appear about equally often (entropy of the class
+real and generated samples. The script uses the same idea at toy scale: a logistic regression trained on 80 % of
+the real digits (about 97 % accuracy on the held-out 20 %) labels 2,000 generated images. If all ten digits
+appear about equally often (entropy of the class
 histogram close to $\log 10 \approx 2.30$) there is no mode collapse; the mean classifier confidence measures
-how recognisable the samples are. After 80 epochs the histogram is close to uniform and the samples are
-clearly readable digits.
+how recognisable the samples are. After 80 epochs the histogram is close to uniform (7–12 % per digit,
+entropy 2.30), the mean classifier confidence is about 0.86 and the samples are clearly readable digits.
 
 Finally, **latent-space interpolation**: decoding points on the straight line between two noise vectors
 $\mathbf{z}_0$ and $\mathbf{z}_1$, $G((1-\alpha)\mathbf{z}_0 + \alpha \mathbf{z}_1)$, gives a smooth morph from one digit into

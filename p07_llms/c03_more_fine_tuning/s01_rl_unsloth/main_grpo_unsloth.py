@@ -1,3 +1,16 @@
+# Portions of this file are derived from:
+#   Unsloth notebook "Qwen2.5_(3B)-GRPO.ipynb"
+#   https://github.com/unslothai/notebooks/blob/main/nb/Qwen2.5_(3B)-GRPO.ipynb
+#   Original author: Unsloth AI (Daniel Han, Michael Han and contributors); License: LGPL-3.0
+#   (https://github.com/unslothai/notebooks/blob/main/LICENSE)
+#   (data preparation and reward functions originally by Will Brown (@willccbb):
+#   https://gist.github.com/willccbb/4676755236bb08cab5f4e54a0475d6fb, see utils/rewards.py)
+# Derived parts: the overall Unsloth + TRL GRPO set-up (4-bit model + LoRA via FastLanguageModel, GSM8K prompts)
+#   and most GRPOConfig hyperparameters (learning rate, Adam betas, warm-up, cosine schedule, adamw_8bit,
+#   max_grad_norm, max_prompt_length, max_steps, save_steps).
+# Changes: no vLLM (fast_inference=False); weight_decay, num_generations, batch size, max_completion_length,
+#   beta, scale_rewards and loss_type set explicitly; before/after evaluation on GSM8K test questions; reward
+#   functions moved to utils/rewards.py; saving of adapters and metrics; inference mode with saved adapters.
 """
 In this script we look at how to fine-tune an instruction-tuned LLM with reinforcement learning, using
 GRPO (Group Relative Policy Optimisation, Shao et al. 2024) from TRL together with Unsloth (4-bit + LoRA).
@@ -212,7 +225,12 @@ if __name__ == "__main__":
             # GRPO objective
             beta=0.04,  # KL penalty towards the reference policy (LoRA disabled); 0.0 switches it off
             scale_rewards="group",  # advantage = (r - group mean) / group std, as in the GRPO paper
-            loss_type="dapo",  # token-level loss normalisation (TRL default); "grpo" = original, length-biased
+            # loss normalisation: "bnpo" averages over all completion tokens of the local batch (token-level, no
+            # length bias; here 1 prompt x G completions per step, so the same normalisation as TRL's default
+            # "dapo"). "grpo" is the original per-sequence 1/|o_i| average (length-biased). We avoid "dapo"
+            # because Unsloth then also enforces the other DAPO settings (epsilon_high=0.28,
+            # mask_truncated_completions=True) and recommends beta=0.0, i.e. no KL penalty.
+            loss_type="bnpo",
             # logging / saving
             logging_steps=1,
             save_steps=max_steps,

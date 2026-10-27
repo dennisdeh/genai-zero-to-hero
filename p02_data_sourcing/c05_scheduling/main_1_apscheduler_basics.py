@@ -103,7 +103,7 @@ def main(duration_s: int = 20) -> dict:
     scheduler.add_job(heartbeat, "interval", seconds=2, id="heartbeat")
     scheduler.add_job(cron_job, "cron", second="*/5", id="cron")  # cron: minute="*/15", hour="2", day_of_week="mon-fri", ...
     scheduler.add_job(slow_job, "interval", seconds=2, id="slow")
-    scheduler.add_job(flaky_job, "interval", seconds=3, id="flaky", jitter=1)  # jitter spreads load: +-1s
+    scheduler.add_job(flaky_job, "interval", seconds=3, id="flaky", jitter=1)  # jitter spreads load: each run is delayed by a random 0..+1 s
     # date trigger: run exactly once at a given point in time
     scheduler.add_job(
         lambda: print(f"{stamp()} date job    : runs exactly once"), "date",

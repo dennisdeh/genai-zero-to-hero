@@ -12,8 +12,8 @@ built from four components:
 
 - **Triggers** decide *when* a job runs:
   - `date` - exactly once at a given time,
-  - `interval` - every N weeks/days/hours/minutes/seconds, optionally with `jitter` (random offset to avoid
-    many jobs hitting a service at the same moment) and `start_date`/`end_date`,
+  - `interval` - every N weeks/days/hours/minutes/seconds, optionally with `jitter` (a random delay of
+    0 to `jitter` seconds, to avoid many jobs hitting a service at the same moment) and `start_date`/`end_date`,
   - `cron` - calendar-based rules with cron semantics, e.g. `hour=2, minute=0` (nightly at 02:00),
     `day_of_week="mon-fri", hour="8-18", minute="*/15"`; also `CronTrigger.from_crontab("0 2 * * *")`.
 - **Job stores** keep the job definitions: in memory (default) or persistent (SQLAlchemy, MongoDB, Redis), so
@@ -88,8 +88,11 @@ Things to know about cron:
   `conda activate`.
 - Redirect stdout/stderr to a log file; otherwise output is mailed to the user or lost.
 - cron does not prevent overlapping runs; wrap long jobs with `flock -n /tmp/ingest.lock <command>`.
-- Times are in the system time zone; be careful around daylight-saving changes (jobs between 02:00 and 03:00
-  may run twice or not at all).
+- Times are in the system time zone; be careful around daylight-saving changes. Vixie cron and cronie
+  special-case jobs with a fixed time: a job at 02:30 runs once on both change days (on the spring day as
+  soon as the clock jumps, in autumn only in the first pass). Jobs with wildcards in the minute or hour field
+  (e.g. `*/10 * * * *`) are not adjusted: in spring the skipped hour simply has no runs, in autumn the
+  repeated hour runs twice. Other cron implementations differ; run on UTC to avoid the issue entirely.
 - https://crontab.guru helps to read and write cron expressions.
 
 ### Choosing a scheduler

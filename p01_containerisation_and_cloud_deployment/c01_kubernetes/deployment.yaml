@@ -1,5 +1,7 @@
 # The Deployment keeps the desired number of identical pods (replicas) of the API running and performs
 # rolling updates when the pod template (e.g. the image tag) changes.
+# spec.replicas is deliberately NOT set: the number of pods is managed by the HorizontalPodAutoscaler (hpa.yaml,
+# minReplicas 2). A value here would be re-applied by every `kubectl apply` and override the autoscaler.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -7,7 +9,6 @@ metadata:
   labels:
     app.kubernetes.io/name: iris-api
 spec:
-  replicas: 2                      # initial value; the HorizontalPodAutoscaler takes over afterwards
   revisionHistoryLimit: 5          # old ReplicaSets kept for `kubectl rollout undo`
   selector:
     matchLabels:

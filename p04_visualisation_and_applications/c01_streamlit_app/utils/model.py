@@ -1,5 +1,9 @@
 """
-Churn model for the dashboard: re-uses the leakage-free feature pipeline of part 3.
+Churn model for the dashboard: re-uses the feature pipeline of part 3.
+
+The model only uses features that are known *before* a customer churns. "Days since the last purchase"
+is deliberately not a feature: churned customers stop buying, so it is a consequence of the label
+(target leakage) - see the preprocessing section of part 3.
 """
 
 from dataclasses import dataclass

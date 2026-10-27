@@ -7,7 +7,6 @@ dependencies:
   - numpy
   - pytest
   - pytest-cov
-  - hypothesis
   - python-dotenv
   - ruff
   - black

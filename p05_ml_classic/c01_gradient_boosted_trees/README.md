@@ -1,6 +1,8 @@
 ## Environment
 - Python conda environment to use: `../conda_env_gzh_ml0.yml` (part-level environment `gzh_ml0`),
   e.g. `conda env create -f p05_ml_classic/conda_env_gzh_ml0.yml && conda activate gzh_ml0`
+- Minimum versions (pinned in the yml): scikit-learn >= 1.8 (`HistGradientBoostingClassifier.fit(X_val=...)` needs
+  >= 1.7), lightgbm >= 4.7 (`LGBMClassifier.fit(eval_X=..., eval_y=...)`).
 - Docker compose setup: none needed
 - Environment variables: none needed. The synthetic churn dataset is generated on the fly by
   `utils/churn_data.py` (also used by chapters c02 and c03).

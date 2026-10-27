@@ -14,6 +14,8 @@ The references listed below also serve as additional resources for to be explore
 - TRL GRPO Trainer: https://huggingface.co/docs/trl/main/en/grpo_trainer
 - PEFT documentation (LoRA and other adapters): https://huggingface.co/docs/peft
 - GSM8K dataset on HuggingFace: https://huggingface.co/datasets/openai/gsm8k
+- Unsloth notebook "Qwen2.5 (3B) GRPO" (Unsloth AI, LGPL-3.0): https://github.com/unslothai/notebooks/blob/main/nb/Qwen2.5_(3B)-GRPO.ipynb
+- Will Brown (@willccbb), GRPO demo on GSM8K (data preparation and reward functions used by the Unsloth notebook): https://gist.github.com/willccbb/4676755236bb08cab5f4e54a0475d6fb
 
 ### Articles:
 - Hu et al. (2021), LoRA: Low-Rank Adaptation of Large Language Models: https://arxiv.org/abs/2106.09685
@@ -31,3 +33,12 @@ The references listed below also serve as additional resources for to be explore
 - TRL: https://github.com/huggingface/trl
 - Unsloth: https://github.com/unslothai/unsloth
 - PEFT: https://github.com/huggingface/peft
+- Unsloth notebooks (LGPL-3.0): https://github.com/unslothai/notebooks
+
+### Code reuse and licences:
+Parts of `s01_rl_unsloth/utils/rewards.py` (system prompt, XML format, answer extraction, `count_xml` and the
+format/integer/correctness reward functions) and of `s01_rl_unsloth/main_grpo_unsloth.py` (the Unsloth + TRL GRPO
+set-up and most `GRPOConfig` values) are adapted from the Unsloth "Qwen2.5 (3B) GRPO" notebook by Unsloth AI, which
+is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0, https://github.com/unslothai/notebooks/blob/main/LICENSE)
+and itself builds on the GRPO demo gist by Will Brown (@willccbb). The file headers name the source, author, licence
+and the modifications made; these adapted portions remain under the LGPL-3.0.

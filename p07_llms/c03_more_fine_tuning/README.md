@@ -23,8 +23,12 @@ All commands are run from the repository root with the `gzh_llm3` environment ac
   - `training = False`: set `load_ft_model` to the saved folder name to reload the adapters and evaluate.
   - Reduce `max_steps` (e.g. 50) for a quick smoke test; the logged `reward` and `rewards/<function>/mean` columns
     show the progress.
-- The reward functions are pure Python and can be tested without a GPU:
+- The reward functions are pure Python and can be tested without a GPU (`pytest` is part of the conda env):
   `python -m pytest p07_llms/c03_more_fine_tuning/s01_rl_unsloth/test_rewards.py`
+- Acknowledgement: the reward functions, prompt format and most GRPO hyperparameters are adapted from the Unsloth
+  notebook "Qwen2.5 (3B) GRPO" by Unsloth AI (https://github.com/unslothai/notebooks, LGPL-3.0), which builds on the
+  GRPO demo by Will Brown (https://gist.github.com/willccbb/4676755236bb08cab5f4e54a0475d6fb). The adapted portions
+  remain under the LGPL-3.0; see the file headers and `sources.md`.
 
 ### s03: more Unsloth notebooks (docker)
 - `docker compose -f p07_llms/c03_more_fine_tuning/s03_more_unsloth/docker-compose.yml up -d`, then open JupyterLab at http://localhost:07012 (needs the NVIDIA container toolkit).

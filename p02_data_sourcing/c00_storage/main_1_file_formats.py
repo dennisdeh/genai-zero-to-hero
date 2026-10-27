@@ -14,7 +14,11 @@ and an SQLite database accessed through SQLAlchemy.
 
 How to run (from the repository root):
     python -m p02_data_sourcing.c00_storage.main_1_file_formats
-    python -m p02_data_sourcing.c00_storage.main_1_file_formats --n-rows 500000
+    python -m p02_data_sourcing.c00_storage.main_1_file_formats --n-rows 500000 --repeats 5
+
+Timings are the best of several runs measured after a warm-up, so that one-time initialisation costs
+and random noise do not decide the comparison. They still depend on the machine: compare the ratios,
+not the absolute numbers.
 
 All files are written to p02_data_sourcing/c00_storage/outputs/formats/.
 """
@@ -40,6 +44,33 @@ def timed(fn: Callable, *args, **kwargs) -> tuple[object, float]:
     return result, time.perf_counter() - t0
 
 
+def best_of(fn: Callable, repeats: int) -> tuple[object, float]:
+    """Run fn() several times and return the last result and the fastest wall time (least disturbed by noise)."""
+    result, best = None, float("inf")
+    for _ in range(repeats):
+        result, t = timed(fn)
+        best = min(best, t)
+    return result, best
+
+
+def warm_up(df: pd.DataFrame, path_dir: str) -> None:
+    """
+    Write and read the full table twice in each binary format before anything is timed. The first full-size
+    Parquet/Feather calls in a process pay one-time costs (lazy imports, codec and thread-pool start-up,
+    growing Arrow's memory pool) that would otherwise be attributed to whichever format is measured first.
+    """
+    p_pq = os.path.join(path_dir, "_warmup.parquet")
+    p_feather = os.path.join(path_dir, "_warmup.feather")
+    for _ in range(2):
+        for codec in ("snappy", "zstd"):
+            df.to_parquet(p_pq, compression=codec, index=False)
+            pd.read_parquet(p_pq)
+        df.to_feather(p_feather)
+        pd.read_feather(p_feather)
+    os.remove(p_pq)
+    os.remove(p_feather)
+
+
 def size_mb(path: str) -> float:
     """Return the size of a file in megabytes."""
     return os.path.getsize(path) / 1024**2
@@ -58,15 +89,18 @@ def dtypes_preserved(original: pd.DataFrame, restored: pd.DataFrame) -> str:
     return "all preserved" if not changed else "; ".join(changed)
 
 
-def benchmark_formats(df: pd.DataFrame, path_dir: str) -> pd.DataFrame:
+def benchmark_formats(df: pd.DataFrame, path_dir: str, repeats: int = 3) -> pd.DataFrame:
     """
     Write df to every format, read it back and collect size, timings and a dtype verdict.
+    Timings are the best of `repeats` runs, measured after a warm-up.
 
     Parameters:
     df: pd.DataFrame
         The table to store.
     path_dir: str
         Directory in which the files are written.
+    repeats: int
+        Number of write/read repetitions per format; the fastest one is reported.
 
     Return:
         DataFrame with one row per format.
@@ -82,6 +116,10 @@ def benchmark_formats(df: pd.DataFrame, path_dir: str) -> pd.DataFrame:
         os.remove(p_sqlite)
     engine = create_engine(f"sqlite:///{p_sqlite}")
 
+    # Both Parquet variants use the same row group size (25,000 rows -> 8 row groups for 200,000 rows),
+    # so they differ only in the compression codec. Several row groups also allow min/max statistics
+    # to skip data (see step 3); pyarrow's default would put up to ~1M rows into a single row group.
+    row_group_size = 25_000
     # each entry: name -> (path, write function, read function)
     formats = {
         "csv": (
@@ -96,13 +134,12 @@ def benchmark_formats(df: pd.DataFrame, path_dir: str) -> pd.DataFrame:
         ),
         "parquet (snappy)": (
             p_pq_snappy,
-            lambda: df.to_parquet(p_pq_snappy, compression="snappy", index=False),
+            lambda: df.to_parquet(p_pq_snappy, compression="snappy", index=False, row_group_size=row_group_size),
             lambda: pd.read_parquet(p_pq_snappy),
         ),
         "parquet (zstd)": (
             p_pq_zstd,
-            # several row groups so that min/max statistics can be used to skip data (see step 3)
-            lambda: df.to_parquet(p_pq_zstd, compression="zstd", index=False, row_group_size=25_000),
+            lambda: df.to_parquet(p_pq_zstd, compression="zstd", index=False, row_group_size=row_group_size),
             lambda: pd.read_parquet(p_pq_zstd),
         ),
         "feather": (
@@ -117,10 +154,11 @@ def benchmark_formats(df: pd.DataFrame, path_dir: str) -> pd.DataFrame:
         ),
     }
 
+    warm_up(df, path_dir)
     rows = []
     for name, (path, write_fn, read_fn) in formats.items():
-        _, t_write = timed(write_fn)
-        restored, t_read = timed(read_fn)
+        _, t_write = best_of(write_fn, repeats)
+        restored, t_read = best_of(read_fn, repeats)
         rows.append(
             {
                 "format": name,
@@ -181,7 +219,7 @@ def selective_reads(path_dir: str) -> None:
     print(pq.read_schema(p_pq))
 
 
-def main(n_rows: int = 200_000) -> pd.DataFrame:
+def main(n_rows: int = 200_000, repeats: int = 3) -> pd.DataFrame:
     """Run the comparison and print the results."""
     # 1. Generate the data
     print(f"\n *** 1. Generating {n_rows:,} synthetic transactions *** ")
@@ -192,8 +230,8 @@ def main(n_rows: int = 200_000) -> pd.DataFrame:
     print(f"In-memory size: {df.memory_usage(deep=True).sum() / 1024**2:.1f} MB")
 
     # 2. Write and read every format
-    print("\n *** 2. Writing and reading each format *** ")
-    results = benchmark_formats(df, PATH_OUTPUTS)
+    print(f"\n *** 2. Writing and reading each format (best of {repeats} runs after a warm-up) *** ")
+    results = benchmark_formats(df, PATH_OUTPUTS, repeats=repeats)
     with pd.option_context("display.max_colwidth", 90, "display.width", 200):
         print(results.to_string(index=False))
 
@@ -219,5 +257,6 @@ def main(n_rows: int = 200_000) -> pd.DataFrame:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--n-rows", type=int, default=200_000, help="number of rows to generate")
+    parser.add_argument("--repeats", type=int, default=3, help="timing repetitions per format (best is reported)")
     args = parser.parse_args()
-    main(n_rows=args.n_rows)
+    main(n_rows=args.n_rows, repeats=args.repeats)

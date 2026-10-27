@@ -9,6 +9,7 @@ import pytest
 
 from p07_llms.c07_validation.utils.dataset import EVAL_SET
 from p07_llms.c07_validation.utils.metrics import (
+    ALL_METRICS,
     contains_answer,
     exact_match,
     normalise_answer,
@@ -21,6 +22,29 @@ def test_normalise_answer() -> None:
     assert normalise_answer("  The F1-Score! ") == "f1 score"
     assert normalise_answer("Price/Earnings ratio") == "price earnings ratio"
     assert normalise_answer("10%") == "10%"
+    assert normalise_answer("It was introduced in 2002.") == "it was introduced in 2002"
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("1.0%", "1%"),  # the decimal point is kept ...
+        ("10.0%", "10%"),  # ... and numbers are canonicalised: 10.0 == 10
+        ("3.75%", "3.75%"),
+        ("0.50", "0.5"),
+        ("1,000", "1000"),  # English thousands separators are removed
+        ("DKK 1,234,567.00", "dkk 1234567"),
+        ("-5", "-5"),
+        ("covid-19", "covid 19"),  # a hyphen glued to a word is not a minus sign
+        (
+            "1,2",
+            "1 2",
+        ),  # not a thousands group: treated as a list, digits are not glued together
+        ("F1-score", "f1 score"),  # digits inside words are left alone
+    ],
+)
+def test_normalise_answer_numbers(text: str, expected: str) -> None:
+    assert normalise_answer(text) == expected
 
 
 @pytest.mark.parametrize(
@@ -30,6 +54,13 @@ def test_normalise_answer() -> None:
         ("relu.", "ReLU", [], 1.0),
         ("Rectified Linear Unit", "ReLU", ["rectified linear unit"], 1.0),
         ("The answer is ReLU", "ReLU", [], 0.0),
+        # numbers: removing '.' inside numbers would make all of these wrong
+        ("1.0%", "10%", [], 0.0),
+        ("3.75%", "37.5%", [], 0.0),
+        ("10.0%", "10%", ["10", "10 percent"], 1.0),
+        ("10.0", "10%", ["10", "10 percent"], 1.0),
+        ("1,000", "1000", [], 1.0),
+        ("1,000", "1.000", [], 0.0),
     ],
 )
 def test_exact_match(
@@ -55,6 +86,12 @@ def test_token_f1() -> None:
     assert token_f1("bond", "exchange-traded fund") == 0.0
 
 
+def test_numbers_in_token_f1_and_rouge_l() -> None:
+    assert token_f1("a rate of 10.0%", "rate of 10%") == pytest.approx(1.0)
+    assert token_f1("a rate of 1.0%", "rate of 10%") == pytest.approx(2 / 3)
+    assert rouge_l("revenue grew 3.75%", "revenue grew 37.5%") == pytest.approx(2 / 3)
+
+
 def test_rouge_l() -> None:
     assert rouge_l(
         "attention is all you need", "Attention Is All You Need"
@@ -71,5 +108,8 @@ def test_dataset_is_well_formed() -> None:
     assert len(ids) == len(set(ids)), "ids must be unique"
     for item in EVAL_SET:
         assert {"id", "category", "question", "reference", "aliases"} <= item.keys()
-        # every reference must match itself perfectly under all metrics
-        assert exact_match(item["reference"], item["reference"], item["aliases"]) == 1.0
+        # every reference (and every alias) must match itself perfectly under all metrics
+        for answer in [item["reference"], *item["aliases"]]:
+            for name, metric in ALL_METRICS.items():
+                score = metric(answer, item["reference"], item["aliases"])
+                assert score == pytest.approx(1.0), f"{item['id']} {name}({answer!r})"

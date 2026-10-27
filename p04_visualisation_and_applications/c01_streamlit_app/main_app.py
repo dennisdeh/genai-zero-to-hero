@@ -3,11 +3,11 @@ Customer analytics dashboard with Streamlit and Plotly.
 
 An interactive web app on top of the (synthetic) online-shop data of part 3:
 
-- sidebar filters (date range, country, segment, plan) that apply to every chart on the page
-- KPI tiles with the change versus the previous period of equal length
+- sidebar filters (date range, country, segment, plan) that apply to the KPIs, charts and data
+- KPI tiles with the change versus the previous period of equal length (if the data covers it)
 - Plotly charts: revenue over time and by category, churn rates and distributions
-- a churn prediction panel: a scikit-learn pipeline trained on the fly, explained by its coefficients,
-  and a form to score a hypothetical customer
+- a churn prediction panel: a scikit-learn pipeline trained on the fly on all customers (independent of
+  the filters), its largest coefficients, and a form to score a hypothetical customer
 - a data tab with the filtered transactions and a CSV download
 
 Streamlit re-runs this script from top to bottom on every interaction. Expensive steps are therefore
@@ -76,7 +76,8 @@ def sidebar_filters(customers: pd.DataFrame, transactions: pd.DataFrame) -> Filt
     """Render the filter widgets and return the selection."""
     st.sidebar.header("Filters")
     first, last = transactions["timestamp"].min().date(), transactions["timestamp"].max().date()
-    default_start = (pd.Timestamp(last) - pd.DateOffset(months=12)).date()
+    # default: the last 12 calendar months, starting on the 1st (no partial first month in the charts)
+    default_start = max((pd.Timestamp(last).to_period("M") - 11).to_timestamp().date(), first)
     period = st.sidebar.date_input("Period", value=(default_start, last), min_value=first, max_value=last,
                                    key="period")
     # while the user is picking, the widget can return a single date
@@ -93,11 +94,17 @@ def kpi_row(transactions: pd.DataFrame, customers: pd.DataFrame, transactions_al
             customers_all: pd.DataFrame, filters: Filters) -> None:
     """KPI tiles with deltas versus the previous period."""
     kpis = compute_kpis(transactions, customers)
-    _, prev_tx = apply_filters(customers_all, transactions_all, previous_period(filters))
-    prev = compute_kpis(prev_tx, customers)
+    previous = previous_period(filters, first_date=transactions_all["timestamp"].min())
+    if previous is None:  # the data does not cover the previous period: no (misleading) deltas
+        prev = None
+    else:
+        _, prev_tx = apply_filters(customers_all, transactions_all, previous)
+        prev = compute_kpis(prev_tx, customers)
 
     def delta(key: str) -> str | None:
-        return f"{(kpis[key] / prev[key] - 1):+.1%} vs. previous period" if prev[key] else None
+        if prev is None or not prev[key]:
+            return None
+        return f"{(kpis[key] / prev[key] - 1):+.1%} vs. previous period"
 
     cols = st.columns(5)
     cols[0].metric("Net revenue", f"{kpis['revenue']:,.0f} EUR", delta("revenue"), border=True)
@@ -113,6 +120,7 @@ def overview_tab(transactions: pd.DataFrame) -> None:
     """Revenue over time and by category."""
     left, right = st.columns([3, 2])
     left.plotly_chart(charts.revenue_over_time(monthly_revenue(transactions)), theme=None, key="revenue_time")
+    left.caption("The first and last month are partial if the period does not start/end on a month boundary.")
     by_category = revenue_by(transactions, "category")
     by_category["category"] = pd.Categorical(by_category["category"], categories=CATEGORIES)
     right.plotly_chart(charts.revenue_by_category(by_category), theme=None, key="revenue_category")
@@ -133,7 +141,10 @@ def customers_tab(customers: pd.DataFrame) -> None:
 def model_tab(model: TrainedModel) -> None:
     """Model quality, explanation and an interactive prediction form."""
     st.markdown(f"Logistic regression on {len(model.feature_frame):,} training customers - "
-                f"**test ROC AUC {model.test_auc:.3f}** (1.0 = perfect ranking, 0.5 = random).")
+                f"**test ROC AUC {model.test_auc:.3f}** (1.0 = perfect ranking, 0.5 = random). "
+                "The model is trained on all customers and does not follow the sidebar filters. It only "
+                "uses information available *before* churn - not, e.g., the days since the last purchase, "
+                "which would leak the outcome. The coefficients show associations, not causes.")
     left, right = st.columns([3, 2])
     left.plotly_chart(charts.coefficient_chart(model.coefficients), theme=None, key="coefficients")
 
@@ -146,7 +157,6 @@ def model_tab(model: TrainedModel) -> None:
                                              step=1000),
             "support_tickets": st.slider("Support tickets", 0, 15, 1),
             "n_transactions": st.slider("Purchases", 0, 40, int(X["n_transactions"].median())),
-            "days_since_last_tx": st.slider("Days since last purchase", 0, 1000, 60),
             "tenure_days": st.slider("Days since signup", 30, 1100, 500),
             "segment": st.selectbox("Segment", SEGMENTS),
             "plan": st.selectbox("Plan", PLANS),
@@ -180,7 +190,8 @@ def main() -> None:
     st.set_page_config(page_title="Customer analytics", page_icon=":bar_chart:", layout="wide")
     apply_style()
     st.title("Customer analytics")
-    st.caption("Interactive dashboard - all charts follow the filters in the sidebar.")
+    st.caption("Interactive dashboard - KPIs, charts and data follow the filters in the sidebar "
+               "(the churn model is trained on all customers).")
 
     customers_all, transactions_all = get_data(N_CUSTOMERS, SEED)
     filters = sidebar_filters(customers_all, transactions_all)

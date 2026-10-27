@@ -15,6 +15,9 @@ What this script demonstrates:
   disconnected graph; `batch` maps every node to its graph)
 - the Graph Isomorphism Network layer (GINConv, Xu et al. 2019) with a learnable MLP update
 - readout / global pooling (sum, mean, max) to go from node embeddings to one vector per graph
+- a train/validation/test split (60/20/20): training is monitored on the validation set, the test set is
+  evaluated once at the end; the pooling functions are compared over a few seeds (different splits and
+  initialisations), because one small test set and one seed are not enough to rank them
 
 How to run (from the repository root):
     python -m p06_neural_networks.c03_gnns.main_3_graph_classification
@@ -47,7 +50,7 @@ POOLING = {"sum": global_add_pool, "mean": global_mean_pool, "max": global_max_p
 
 def make_synthetic_dataset(n_per_class: int = 200, seed: int = 0, features: str = "constant") -> list[Data]:
     """
-    Random graphs from three generators with 20-40 nodes and an average degree of ~4.
+    Random graphs from three generators with 20-40 nodes (inclusive) and an average degree of ~4.
     features="constant": every node gets the same feature 1 – all information must come from the structure;
     features="degree": one-hot encoded node degree.
     """
@@ -55,7 +58,7 @@ def make_synthetic_dataset(n_per_class: int = 200, seed: int = 0, features: str 
     graphs = []
     for label in range(3):
         for _ in range(n_per_class):
-            n = int(rng.integers(20, 40))
+            n = int(rng.integers(20, 41))  # the upper bound of integers() is exclusive
             s = int(rng.integers(1_000_000))
             if label == 0:
                 g = nx.gnp_random_graph(n, 4 / (n - 1), seed=s)
@@ -126,17 +129,23 @@ def evaluate(model: nn.Module, loader: DataLoader, device: torch.device) -> floa
 
 
 def run(graphs: list, in_dim: int, n_classes: int, pooling: str, epochs: int, seed: int, device: torch.device,
-        verbose: bool = False) -> float:
-    """Train a GIN with the given pooling on a 80/20 split and return the test accuracy."""
+        verbose: bool = False) -> tuple[float, float]:
+    """
+    Train a GIN with the given pooling on a 60/20/20 train/validation/test split (the split depends on `seed`).
+    Training is monitored on the validation set only; the test set is evaluated once, after training.
+    Returns (validation accuracy, test accuracy).
+    """
     set_seed(seed)
     perm = np.random.default_rng(seed).permutation(len(graphs))
-    split = int(0.8 * len(graphs))
-    train = [graphs[i] for i in perm[:split]]
-    test = [graphs[i] for i in perm[split:]]
+    n_train, n_val = int(0.6 * len(graphs)), int(0.2 * len(graphs))
+    train = [graphs[i] for i in perm[:n_train]]
+    val = [graphs[i] for i in perm[n_train:n_train + n_val]]
+    test = [graphs[i] for i in perm[n_train + n_val:]]
     train_loader = DataLoader(train, batch_size=32, shuffle=True)
-    test_loader = DataLoader(test, batch_size=128)
+    val_loader, test_loader = DataLoader(val, batch_size=128), DataLoader(test, batch_size=128)
     train_eval_loader = DataLoader(train, batch_size=128)
     if verbose:
+        print(f"split: {len(train)} train, {len(val)} validation, {len(test)} test graphs")
         b = next(iter(DataLoader(train, batch_size=32)))
         print(f"one mini-batch: {b.num_graphs} graphs stacked into {b.num_nodes} nodes; "
               f"batch vector (first 40 entries): {b.batch[:40].tolist()}")
@@ -151,10 +160,10 @@ def run(graphs: list, in_dim: int, n_classes: int, pooling: str, epochs: int, se
             loss.backward()
             opt.step()
         if verbose and (epoch % 10 == 0 or epoch == epochs - 1):
-            train_acc, test_acc = evaluate(model, train_eval_loader, device), evaluate(model, test_loader, device)
+            train_acc, val_acc = evaluate(model, train_eval_loader, device), evaluate(model, val_loader, device)
             print(f"  epoch {epoch:3d} | last batch loss {loss.item():.4f} | train acc {train_acc:.3f} | "
-                  f"test acc {test_acc:.3f}")
-    return evaluate(model, test_loader, device)
+                  f"val acc {val_acc:.3f}")
+    return evaluate(model, val_loader, device), evaluate(model, test_loader, device)
 
 
 if __name__ == "__main__":
@@ -164,26 +173,36 @@ if __name__ == "__main__":
                         help="node features of the synthetic graphs")
     parser.add_argument("--epochs", type=int, default=40)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--n-seeds", type=int, default=5, help="seeds (splits/initialisations) per pooling function")
     args = parser.parse_args()
     device = get_device()
 
     # 1. Build / load the dataset
     graphs, in_dim, n_classes = load_dataset(args.dataset, args.seed, args.features)
     sizes = [g.num_nodes for g in graphs]
-    print(f"device: {device} | {len(graphs)} graphs, {np.mean(sizes):.1f} nodes on average, "
-          f"{in_dim} node features, {n_classes} classes")
+    print(f"device: {device} | {len(graphs)} graphs, {np.mean(sizes):.1f} nodes on average "
+          f"({min(sizes)}-{max(sizes)}), {in_dim} node features, {n_classes} classes")
     print(f"example graph: {graphs[0]}")
     if args.dataset == "synthetic":
         print("classes: " + ", ".join(f"{i} = {name}" for i, name in enumerate(CLASS_NAMES)))
 
     # 2. Train a GIN with sum pooling (the most expressive readout) and show the training progress
     print("\nGIN with sum pooling")
-    accs = {"sum": run(graphs, in_dim, n_classes, "sum", args.epochs, args.seed, device, verbose=True)}
-    print(f"test accuracy: {accs['sum']:.3f}")
+    seeds = [args.seed + k for k in range(args.n_seeds)]
+    results = {"sum": [run(graphs, in_dim, n_classes, "sum", args.epochs, seeds[0], device, verbose=True)]}
+    print(f"validation accuracy {results['sum'][0][0]:.3f} | test accuracy (evaluated once) {results['sum'][0][1]:.3f}")
 
-    # 3. Compare readout functions (same seed and split)
-    for pooling in ["mean", "max"]:
-        accs[pooling] = run(graphs, in_dim, n_classes, pooling, args.epochs, args.seed, device)
-    print("\nComparison of global pooling functions:")
-    for pooling, acc in accs.items():
-        print(f"  {pooling:4s} pooling: test accuracy {acc:.3f}")
+    # 3. Compare readout functions over several seeds (each seed: a different split and initialisation)
+    for pooling in ["sum", "mean", "max"]:
+        results.setdefault(pooling, [])
+        for seed in seeds[len(results[pooling]):]:
+            results[pooling].append(run(graphs, in_dim, n_classes, pooling, args.epochs, seed, device))
+    n_test = len(graphs) - int(0.6 * len(graphs)) - int(0.2 * len(graphs))
+    print(f"\nComparison of global pooling functions (mean ± std over {len(seeds)} seeds; "
+          f"{n_test} test graphs per seed):")
+    for pooling, res in results.items():
+        val_accs, test_accs = np.array(res).T
+        print(f"  {pooling:4s} pooling: val accuracy {val_accs.mean():.3f} ± {val_accs.std():.3f} | "
+              f"test accuracy {test_accs.mean():.3f} ± {test_accs.std():.3f}")
+    print("Differences of one or two test graphs (~1%) are within the noise: with so few graphs and seeds this\n"
+          "comparison is anecdotal, not a reliable ranking of the pooling functions.")

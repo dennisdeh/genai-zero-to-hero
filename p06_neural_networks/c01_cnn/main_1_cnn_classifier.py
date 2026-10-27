@@ -6,7 +6,8 @@ What this script demonstrates:
 - data augmentation (random rotations/shifts, horizontal flips for natural images) applied on the fly
 - a training loop with validation, a cosine learning-rate schedule and early stopping
 - evaluation with a classification report, a confusion matrix and a gallery of misclassified images
-- saving a full checkpoint (weights, optimiser state, epoch, config) and loading it back into a fresh model
+- saving a full checkpoint (weights, optimiser and scheduler state of the best epoch, epoch, config), loading it
+  back into a fresh model and restoring the optimiser/scheduler from it as one would to resume training
 
 Datasets (offline-first):
 - "digits" (default): scikit-learn's bundled 8x8 handwritten digits (1,797 images), no download needed
@@ -195,11 +196,23 @@ class SimpleCNN(nn.Module):
 # ----------------------------------------------------------------------------------------------
 # Checkpoints
 # ----------------------------------------------------------------------------------------------
-def save_checkpoint(path: str, model: nn.Module, optimiser: torch.optim.Optimizer, epoch: int, cfg: Config,
-                    meta: dict) -> None:
-    """Save everything needed to resume training or to run inference later."""
-    torch.save({"model_state": model.state_dict(), "optimiser_state": optimiser.state_dict(), "epoch": epoch,
-                "config": asdict(cfg), "meta": meta}, path)
+def make_optimiser(model: nn.Module, cfg: Config) -> tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LRScheduler]:
+    """AdamW with a cosine learning-rate schedule over cfg.epochs epochs."""
+    optimiser = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimiser, T_max=cfg.epochs)
+    return optimiser, scheduler
+
+
+def save_checkpoint(path: str, model: nn.Module, optimiser: torch.optim.Optimizer,
+                    scheduler: torch.optim.lr_scheduler.LRScheduler, epoch: int, cfg: Config, meta: dict) -> None:
+    """
+    Save everything needed to run inference later or to resume training after `epoch`.
+
+    Model, optimiser and scheduler state must all belong to the same epoch (here: the best one, see
+    EarlyStopping). Only tensors and plain python containers are stored, so `weights_only=True` can load it.
+    """
+    torch.save({"model_state": model.state_dict(), "optimiser_state": optimiser.state_dict(),
+                "scheduler_state": scheduler.state_dict(), "epoch": epoch, "config": asdict(cfg), "meta": meta}, path)
 
 
 def load_checkpoint(path: str, device: torch.device) -> tuple[SimpleCNN, dict]:
@@ -210,6 +223,19 @@ def load_checkpoint(path: str, device: torch.device) -> tuple[SimpleCNN, dict]:
     model = SimpleCNN(meta["in_channels"], len(meta["classes"]), tuple(cfg["channels"]), cfg["dropout"])
     model.load_state_dict(ckpt["model_state"])
     return model.to(device).eval(), ckpt
+
+
+def restore_training_state(model: nn.Module, ckpt: dict) -> tuple[torch.optim.Optimizer,
+                                                                    torch.optim.lr_scheduler.LRScheduler, int]:
+    """
+    Rebuild optimiser and scheduler for `model` from a checkpoint, as needed to resume training.
+    Returns (optimiser, scheduler, first epoch to run). (Bit-identical resumption would also need the random
+    number generator states for shuffling, augmentation and dropout.)
+    """
+    optimiser, scheduler = make_optimiser(model, Config(**ckpt["config"]))
+    optimiser.load_state_dict(ckpt["optimiser_state"])  # Adam moments, step counts, current learning rate
+    scheduler.load_state_dict(ckpt["scheduler_state"])  # position in the cosine schedule
+    return optimiser, scheduler, ckpt["epoch"] + 1
 
 
 # ----------------------------------------------------------------------------------------------
@@ -265,8 +291,7 @@ def run_training(cfg: Config) -> str:
     model = SimpleCNN(meta["in_channels"], len(meta["classes"]), cfg.channels, cfg.dropout).to(device)
     print(f"SimpleCNN with {count_parameters(model):,} trainable parameters")
     loss_fn = nn.CrossEntropyLoss(label_smoothing=0.05)
-    optimiser = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimiser, T_max=cfg.epochs)
+    optimiser, scheduler = make_optimiser(model, cfg)
     stopper = EarlyStopping(patience=cfg.patience)
 
     # 3. Train with validation and early stopping
@@ -275,18 +300,22 @@ def run_training(cfg: Config) -> str:
         va_loss, va_acc = evaluate(model, val_loader, loss_fn, device)
         scheduler.step()
         print(f"epoch {epoch:3d} | train loss {tr_loss:.4f} acc {tr_acc:.3f} | val loss {va_loss:.4f} acc {va_acc:.3f}")
-        if stopper.step(va_loss, model, epoch):
+        # also remember the optimiser and scheduler states of the best epoch, for a consistent checkpoint
+        if stopper.step(va_loss, model, epoch, optimiser, scheduler):
             print(f"Early stopping at epoch {epoch}")
             break
-    stopper.restore_best(model)
+    stopper.restore_best(model, optimiser, scheduler)  # weights, optimiser and scheduler of the best epoch
 
     # 4. Save a checkpoint
     ckpt_path = os.path.join(output_dir, f"cnn_{cfg.dataset}.pt")
-    save_checkpoint(ckpt_path, model, optimiser, stopper.best_epoch, cfg, meta)
+    save_checkpoint(ckpt_path, model, optimiser, scheduler, stopper.best_epoch, cfg, meta)
     print(f"Saved checkpoint (best epoch {stopper.best_epoch}) to {ckpt_path}")
 
     # 5. Load the checkpoint into a fresh model and evaluate on the test set
-    model, _ = load_checkpoint(ckpt_path, device)
+    model, ckpt = load_checkpoint(ckpt_path, device)
+    _, resumed_scheduler, start_epoch = restore_training_state(model, ckpt)
+    print(f"Optimiser and scheduler restored: training could resume at epoch {start_epoch} "
+          f"with learning rate {resumed_scheduler.get_last_lr()[0]:.2e}")
     test_loss, test_acc = evaluate(model, test_loader, loss_fn, device)
     y_true, y_pred = predict(model, test_loader, device)
     print(f"\nReloaded model – test loss {test_loss:.4f} | test accuracy {test_acc:.3f}")

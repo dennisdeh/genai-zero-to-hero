@@ -6,7 +6,7 @@ trace and gives access to every layout detail. Using the weekly stock prices bun
 (2018-2019, normalised to 1 at the start) the script shows
 
 1. a multi-series time series with a range slider and range selector buttons
-2. a correlation heatmap of weekly returns with a diverging colour scale centred at zero
+2. a correlation heatmap of weekly returns with a diverging colour scale fixed to [-1, 1] (neutral = 0)
 3. stacked subplots sharing the x-axis (price and drawdown) instead of a misleading dual y-axis,
    with a shaded region and an annotation marking the maximum drawdown
 4. exporting: standalone HTML, JSON (to rebuild the figure elsewhere) and - if kaleido is
@@ -35,6 +35,9 @@ from p04_visualisation_and_applications.c00_plotting.utils.style import (
 
 PATH_OUTPUTS = os.path.join(os.path.dirname(__file__), "outputs")
 TICKERS = ["AAPL", "AMZN", "FB", "GOOG", "MSFT", "NFLX"]  # fixed order -> fixed colour per ticker
+# six palette slots whose *every* pair stays distinguishable under simulated colour vision deficiencies
+# (slots 1 and 5, orange and dark green, are adjacent-safe but collapse for protanopes when both are used)
+TICKER_COLOURS = [CATEGORICAL[i] for i in (0, 2, 3, 4, 5, 7)]
 
 
 def load_prices() -> pd.DataFrame:
@@ -44,15 +47,25 @@ def load_prices() -> pd.DataFrame:
     return prices.set_index("date")[TICKERS]
 
 
+def spread_labels(values: pd.Series, min_gap: float) -> pd.Series:
+    """Label positions close to ``values`` but at least ``min_gap`` apart (so end labels do not overlap)."""
+    positions = values.sort_values().copy()
+    for i in range(1, len(positions)):
+        positions.iloc[i] = max(positions.iloc[i], positions.iloc[i - 1] + min_gap)
+    return positions
+
+
 def time_series_with_slider(prices: pd.DataFrame) -> go.Figure:
     """One line per ticker (indexed to 100), with range slider, range buttons and a unified hover."""
     fig = go.Figure()
-    for ticker, colour in zip(TICKERS, CATEGORICAL):
-        fig.add_trace(go.Scatter(x=prices.index, y=100 * prices[ticker], name=ticker, mode="lines",
+    indexed = 100 * prices
+    label_y = spread_labels(indexed.iloc[-1], min_gap=0.045 * (indexed.max().max() - indexed.min().min()))
+    for ticker, colour in zip(TICKERS, TICKER_COLOURS):
+        fig.add_trace(go.Scatter(x=prices.index, y=indexed[ticker], name=ticker, mode="lines",
                                  line=dict(color=colour),
                                  hovertemplate="%{y:.1f}"))
         # direct label at the end of each line (identity is not carried by colour alone)
-        fig.add_annotation(x=prices.index[-1], y=100 * prices[ticker].iloc[-1], text=ticker, showarrow=False,
+        fig.add_annotation(x=prices.index[-1], y=label_y[ticker], text=ticker, showarrow=False,
                            xanchor="left", xshift=6, font=dict(color=INK_SECONDARY, size=11))
     fig.add_hline(y=100, line=dict(color="#c3c2b7", width=1))
     fig.update_layout(
@@ -74,10 +87,16 @@ def time_series_with_slider(prices: pd.DataFrame) -> go.Figure:
 
 
 def correlation_heatmap(prices: pd.DataFrame) -> go.Figure:
-    """Correlation of weekly returns; diverging scale fixed to [-1, 1] so that white means zero."""
+    """
+    Correlation of weekly returns.
+
+    The diverging scale is fixed to [-1, 1] with zmin/zmax, so its neutral grey midpoint is exactly 0
+    ("no correlation"). (zmid would only centre an *automatic* range; plotly ignores it when zmin and
+    zmax are set.)
+    """
     corr = prices.pct_change().dropna().corr().round(2)
     fig = go.Figure(go.Heatmap(
-        z=corr.to_numpy(), x=corr.columns, y=corr.index, zmin=-1, zmax=1, zmid=0,
+        z=corr.to_numpy(), x=corr.columns, y=corr.index, zmin=-1, zmax=1,
         colorscale=DIVERGING,  # blue (negative) - grey (zero) - red (positive), see style.py
         texttemplate="%{z:.2f}", hovertemplate="%{y} vs %{x}: %{z:.2f}<extra></extra>",
         colorbar=dict(title="corr."),

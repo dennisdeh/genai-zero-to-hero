@@ -34,12 +34,18 @@ def load_data(n_customers: int = 2000, seed: int = 42) -> tuple[pd.DataFrame, pd
 
 def apply_filters(customers: pd.DataFrame, transactions: pd.DataFrame,
                   filters: Filters) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Restrict customers by attributes and transactions by attributes and date range."""
+    """
+    Restrict customers by attributes and transactions by attributes and date range.
+
+    The date range is half-open, [start, end + 1 day): it includes the whole end day, and consecutive
+    periods do not overlap (a transaction at midnight is not counted twice).
+    """
     mask_c = (customers["country"].isin(filters.countries) & customers["segment"].isin(filters.segments)
               & customers["plan"].isin(filters.plans))
     mask_t = (transactions["country"].isin(filters.countries) & transactions["segment"].isin(filters.segments)
               & transactions["plan"].isin(filters.plans)
-              & transactions["timestamp"].between(filters.start, filters.end + pd.Timedelta(days=1)))
+              & (transactions["timestamp"] >= filters.start)
+              & (transactions["timestamp"] < filters.end + pd.Timedelta(days=1)))
     return customers[mask_c], transactions[mask_t]
 
 
@@ -56,11 +62,19 @@ def compute_kpis(transactions: pd.DataFrame, customers: pd.DataFrame) -> dict[st
     }
 
 
-def previous_period(filters: Filters) -> Filters:
-    """The period of equal length directly before the selected one (for KPI deltas)."""
+def previous_period(filters: Filters, first_date: pd.Timestamp | None = None) -> Filters | None:
+    """
+    The period of equal length directly before the selected one (for KPI deltas).
+
+    :param first_date: first date with data; if the previous period starts earlier, it is incomplete
+        and a comparison would be misleading, so None is returned
+    """
     length = filters.end - filters.start
-    return Filters(filters.start - length - pd.Timedelta(days=1), filters.start - pd.Timedelta(days=1),
-                   filters.countries, filters.segments, filters.plans)
+    previous = Filters(filters.start - length - pd.Timedelta(days=1), filters.start - pd.Timedelta(days=1),
+                       filters.countries, filters.segments, filters.plans)
+    if first_date is not None and previous.start < pd.Timestamp(first_date).normalize():
+        return None
+    return previous
 
 
 def monthly_revenue(transactions: pd.DataFrame) -> pd.DataFrame:

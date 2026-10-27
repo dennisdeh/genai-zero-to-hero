@@ -32,6 +32,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from sklearn.datasets import load_digits
 from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, TensorDataset
 
 from p06_neural_networks.utils.torch_helpers import count_parameters, get_device, get_output_dir, set_seed
@@ -117,11 +118,16 @@ def save_grid(images: torch.Tensor, path: str, nrow: int = 8, title: str = "") -
     plt.close(fig)
 
 
-def fit_digit_classifier(x: torch.Tensor, y: np.ndarray) -> LogisticRegression:
-    """A simple classifier on real (16x16) digits, used to label generated samples."""
+def fit_digit_classifier(x: torch.Tensor, y: np.ndarray, seed: int = 0) -> tuple[LogisticRegression, float]:
+    """
+    A simple classifier on real (16x16) digits, used to label generated samples.
+    Trained on 80% of the real digits; returns the classifier and its accuracy on the held-out 20%.
+    """
+    x_flat = x.view(len(x), -1).numpy()
+    x_tr, x_te, y_tr, y_te = train_test_split(x_flat, y, test_size=0.2, random_state=seed, stratify=y)
     clf = LogisticRegression(max_iter=2000)
-    clf.fit(x.view(len(x), -1).numpy(), y)
-    return clf
+    clf.fit(x_tr, y_tr)
+    return clf, clf.score(x_te, y_te)
 
 
 def sample_quality(clf: LogisticRegression, samples: torch.Tensor) -> tuple[np.ndarray, float, float]:
@@ -151,9 +157,8 @@ if __name__ == "__main__":
     x, y = load_digit_images()
     loader = DataLoader(TensorDataset(x), batch_size=args.batch_size, shuffle=True, drop_last=True)
     save_grid(x[:64], os.path.join(output_dir, "dcgan_real.png"), title="real digits (16x16)")
-    clf = fit_digit_classifier(x, y)
-    print(f"Real data: {tuple(x.shape)}, classifier accuracy on real data: "
-          f"{clf.score(x.view(len(x), -1).numpy(), y):.3f}")
+    clf, clf_acc = fit_digit_classifier(x, y, seed=args.seed)
+    print(f"Real data: {tuple(x.shape)}, classifier accuracy on held-out real digits: {clf_acc:.3f}")
 
     # 2. Build the networks and optimisers
     G, D = Generator(args.z_dim).to(device), Discriminator().to(device)

@@ -20,6 +20,7 @@ The references listed below also serve as additional resources for to be explore
 - Rumelhart, Hinton, Williams – Learning representations by back-propagating errors, Nature 323, 1986
 - Cybenko – Approximation by superpositions of a sigmoidal function, Mathematics of Control, Signals and Systems 2, 1989
 - Hornik – Approximation capabilities of multilayer feedforward networks, Neural Networks 4, 1991
+- Leshno, Lin, Pinkus, Schocken – Multilayer feedforward networks with a nonpolynomial activation function can approximate any function, Neural Networks 6(6):861–867, 1993
 - Glorot, Bengio – Understanding the difficulty of training deep feedforward neural networks, AISTATS 2010
 - He, Zhang, Ren, Sun – Delving Deep into Rectifiers (He initialisation), 2015: https://arxiv.org/abs/1502.01852
 - Srivastava, Hinton, Krizhevsky, Sutskever, Salakhutdinov – Dropout: A Simple Way to Prevent Neural Networks from Overfitting, JMLR 15, 2014

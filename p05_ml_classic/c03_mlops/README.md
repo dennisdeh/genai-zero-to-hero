@@ -1,6 +1,8 @@
 ## Environment
 - Python conda environment to use: `../conda_env_gzh_ml0.yml` (part-level environment `gzh_ml0`, includes `mlflow`),
   e.g. `conda env create -f p05_ml_classic/conda_env_gzh_ml0.yml && conda activate gzh_ml0`
+- Minimum versions (pinned in the yml): mlflow >= 3.17 (`log_model(name=..., skops_trusted_types=...)`, skops as
+  the default scikit-learn serialization format), scikit-learn >= 1.8.
 - Docker compose setup: none needed. MLflow runs locally with a SQLite backend store
   (`outputs/mlflow.db`) and a local artifact store (`outputs/mlartifacts/`), both git-ignored.
 - Environment variables: none needed for the scripts. For the MLflow CLI (serving) set

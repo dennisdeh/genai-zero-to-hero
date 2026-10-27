@@ -107,8 +107,12 @@ if __name__ == "__main__":
     for text in EXAMPLES:
         ids = tok.encode(text)
         print(f"{len(ids):3d} tokens | {' | '.join(tok.token_strings(ids))}")
-    ids = tok.encode(f"First document.{EOT}Second document.")
+    ids = tok.encode(f"First document.{EOT}Second document.", allowed_special="all")
     print(f"special token handling: {tok.token_strings(ids)}")
+    try:  # untrusted text must not be able to inject special tokens
+        tok.encode(f"user input with {EOT} inside")
+    except ValueError as e:
+        print(f"special token string in untrusted text -> ValueError: {e}")
 
     # 3. Persistence and export to tiktoken (identical ids, but much faster)
     os.makedirs(PATH_OUTPUTS, exist_ok=True)
@@ -117,7 +121,7 @@ if __name__ == "__main__":
     tok_loaded = BPETokeniser.load(path_tok)
     assert tok_loaded.encode(held_out) == tok.encode(held_out)
     enc_fast = to_tiktoken(tok)
-    same = enc_fast.encode(held_out, allowed_special="all") == tok.encode(held_out)
+    same = enc_fast.encode(held_out, allowed_special="all") == tok.encode(held_out, allowed_special="all")
     print(f"\nsaved to {path_tok}; reloaded tokeniser gives identical ids")
     print(f"tiktoken encoder built from our merges gives identical ids: {same}")
     t0 = time.perf_counter()

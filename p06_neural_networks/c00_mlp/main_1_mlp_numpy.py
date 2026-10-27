@@ -118,26 +118,28 @@ class NumpyMLP:
 # ----------------------------------------------------------------------------------------------
 # Gradient check, training and plotting
 # ----------------------------------------------------------------------------------------------
-def gradient_check(model: NumpyMLP, x: np.ndarray, y: np.ndarray, eps: float = 1e-6, n_checks: int = 10) -> float:
+def gradient_check(model: NumpyMLP, x: np.ndarray, y: np.ndarray, eps: float = 1e-6, n_checks: int = 20) -> float:
     """
     Compare analytical gradients from `backward` with central finite differences
-    (L(w + eps) - L(w - eps)) / (2 eps) for a few random weights. Returns the max relative error.
+    (L(p + eps) - L(p - eps)) / (2 eps) for a few random parameters – weights *and* biases of every layer.
+    Returns the max relative error.
     """
     rng = np.random.default_rng(1)
     model.forward(x)
-    grads_W, _ = model.backward(y)
+    grads_W, grads_b = model.backward(y)
+    params, grads = model.W + model.b, grads_W + grads_b  # all parameter arrays and their gradients
     max_rel_err = 0.0
     for _ in range(n_checks):
-        l = rng.integers(len(model.W))
-        i, j = rng.integers(model.W[l].shape[0]), rng.integers(model.W[l].shape[1])
-        old = model.W[l][i, j]
-        model.W[l][i, j] = old + eps
+        k = rng.integers(len(params))
+        idx = np.unravel_index(rng.integers(params[k].size), params[k].shape)  # random entry of array k
+        old = params[k][idx]
+        params[k][idx] = old + eps  # the arrays are modified in place, so the model sees the change
         loss_plus = bce_loss(model.forward(x), y)
-        model.W[l][i, j] = old - eps
+        params[k][idx] = old - eps
         loss_minus = bce_loss(model.forward(x), y)
-        model.W[l][i, j] = old
+        params[k][idx] = old
         numerical = (loss_plus - loss_minus) / (2 * eps)
-        analytical = grads_W[l][i, j]
+        analytical = grads[k][idx]
         rel_err = abs(numerical - analytical) / max(1e-8, abs(numerical) + abs(analytical))
         max_rel_err = max(max_rel_err, rel_err)
     return max_rel_err

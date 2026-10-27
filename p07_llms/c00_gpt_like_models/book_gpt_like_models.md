@@ -225,8 +225,9 @@ scripts accept OpenAI's `tiktoken` `cl100k_base` encoding.
    ids of the special tokens.
 2. `main_step2_pretraining.py` pretrains a `gpt2`-sized model (12 layers, 12 heads, $d = 768$, block size 512,
    vocabulary 32,000) from scratch on the Wikipedia token stream: AdamW with learning rate $10^{-4}$, weight decay
-   0.01, gradient clipping at 1.0, batch size 32 (16 on a single GPU), at most 30,000 iterations with early
-   stopping after 50 evaluations without improvement. The training and validation losses and the hyperparameters
+   0.01, gradient clipping at 1.0, batch size 32 (the script sets `use_multi_gpu = True`, which wraps the model
+   in `torch.nn.DataParallel` to split each batch across all visible GPUs; with `use_multi_gpu = False` the batch
+   size is 16), at most 30,000 iterations with early stopping after 50 evaluations without improvement. The training and validation losses and the hyperparameters
    are logged to an MLflow server at `http://localhost:5000`, the weights are saved to `trained_models/` as
    `model_<timestamp>.bin`, and a short sample is generated. With `training = False` (the default) the script
    instead loads the model file named in `load_model` and generates a continuation of "He then went to the beach"

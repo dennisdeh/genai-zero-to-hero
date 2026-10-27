@@ -54,7 +54,8 @@ def build_session(
     retries: int
         Maximum number of retries for connection errors and the status codes 429, 500, 502, 503, 504.
     backoff_factor: float
-        Sleep backoff_factor * 2**(n-1) seconds before retry n (0.5 -> 0.5s, 1s, 2s, ...).
+        Exponential back-off (urllib3 2.x): no sleep before the first retry, then backoff_factor * 2**(n-1)
+        seconds before retry n (0.5 -> 0s, 1s, 2s, 4s, ...). A Retry-After header from the server takes precedence.
     headers: dict, None
         Extra default headers (e.g. Accept or Authorization).
     """
@@ -128,9 +129,21 @@ def get_json(
         raise ApiError(f"Could not connect to {url} (offline, DNS, proxy or firewall?): {e}") from e
 
     # 3. Status handling
-    if resp.status_code == 403 and resp.headers.get("X-RateLimit-Remaining") == "0":
-        reset = int(resp.headers.get("X-RateLimit-Reset", "0"))
-        raise ApiError(f"Rate limit exhausted; it resets at {time.strftime('%H:%M:%S', time.localtime(reset))}")
+    # Rate limits come as 403 *or* 429 (GitHub uses both), so check the rate-limit headers before treating
+    # a 403 as "not authorised". X-RateLimit-Remaining: 0 = primary (hourly) limit used up, wait for the
+    # reset time; Retry-After = secondary limit (too many requests too fast), wait that many seconds.
+    if resp.status_code in (403, 429):
+        if resp.headers.get("X-RateLimit-Remaining") == "0":
+            reset = int(resp.headers.get("X-RateLimit-Reset") or 0)
+            when = time.strftime("%H:%M:%S", time.localtime(reset)) if reset else "an unknown time"
+            raise ApiError(f"{resp.status_code} - rate limit exhausted; it resets at {when}")
+        if resp.headers.get("Retry-After") is not None:
+            raise ApiError(
+                f"{resp.status_code} - rate limited (secondary rate limit); "
+                f"the server asks to wait {resp.headers['Retry-After']} s before the next request"
+            )
+        if resp.status_code == 429 or "rate limit" in resp.text.lower():
+            raise ApiError(f"{resp.status_code} - too many requests (rate limited); slow down and retry later")
     if resp.status_code in (401, 403):
         raise ApiError(f"{resp.status_code} - not authorised for {resp.url}: check your token / permissions")
     if resp.status_code == 404:

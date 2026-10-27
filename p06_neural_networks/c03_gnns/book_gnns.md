@@ -56,9 +56,13 @@ the degree matrix $\hat{D}_{ii} = \sum_j \hat{A}_{ij}$, the **GCN propagation ru
 $$ H^{(l+1)} = \sigma\Big(\hat{D}^{-1/2}\, \hat{A}\, \hat{D}^{-1/2}\, H^{(l)}\, W^{(l)}\Big). $$
 Per node this reads
 $$ \mathbf{h}_i^{(l+1)} = \sigma\Big( \sum_{j \in \mathcal{N}(i) \cup \{i\}} \frac{1}{\sqrt{\hat{d}_i \hat{d}_j}}\, W^{(l)} \mathbf{h}_j^{(l)} \Big): $$
-a weighted average of the transformed features of the neighbours and the node itself. The symmetric
-normalisation keeps the scale of the features independent of the degree (high-degree nodes would otherwise
-have huge sums) and down-weights messages from hubs. `HandmadeGCNConv` in `main_1_message_passing.py`
+a symmetrically normalised weighted sum of the transformed features of the neighbours and the node itself.
+It is not an average: the weights $1/\sqrt{\hat{d}_i \hat{d}_j}$ of a node do not sum to one (on Karate Club
+the row sums of $\hat{D}^{-1/2}\hat{A}\hat{D}^{-1/2}$ range from about 0.63 to 2.0) – they are close to one only
+when the neighbours have about the same degree as the node. The normalisation therefore does not make the
+scale exactly independent of the degree, but it keeps it under control: without it, high-degree nodes would get
+sums that grow linearly with their degree, whereas the normalised matrix has largest eigenvalue 1, so stacking
+layers does not blow up the features. It also down-weights messages from hubs. `HandmadeGCNConv` in `main_1_message_passing.py`
 implements exactly this: add self-loops, apply the linear map $W$, compute `norm` $= 1/\sqrt{\hat{d}_i\hat{d}_j}$ per edge,
 and let `message()` return `norm * x_j`, which `propagate()` sums per node. The script verifies that the dense
 matrix formula, the hand-written layer and PyG's `GCNConv` with the same weights give identical outputs (up to
@@ -121,8 +125,14 @@ node has the same constant feature, so the network must discover the structural 
 `--features degree` it gets the one-hot degree as input. Mini-batching works differently from images: PyG's
 `DataLoader` stacks the graphs of a batch into one large disconnected graph and creates a `batch` vector that
 maps every node to its graph, which the pooling functions use. The script uses *jumping knowledge* (the pooled
-embeddings of all layers are concatenated) and compares sum, mean and max pooling. The GIN reaches close to
-100 % test accuracy within a few epochs; with `--dataset mutag` it classifies molecules from the TU collection.
+embeddings of all layers are concatenated) and a 60/20/20 train/validation/test split: training progress is
+printed on the validation set, and the test set is evaluated only once, after training. With sum pooling the GIN
+reaches about 98 % validation accuracy after 10 epochs and 98.3 % test accuracy at the end. The script then
+compares sum, mean and max pooling over five seeds (each with a different split and initialisation): all three
+reach 97–99 % mean test accuracy (sum 98.3 ± 0.9 %, mean 97.7 ± 1.3 %, max 98.8 ± 1.2 %). With 120 test graphs
+per seed one graph is 0.8 %, so these differences are within the noise – on this easy task the comparison is
+anecdotal and does not show the advantage of sum pooling expected from theory (a single seed can suggest any
+order). With `--dataset mutag` the script classifies molecules from the TU collection.
 
 ### Beyond this chapter
 Edge features (bond types) enter through the message function; heterogeneous graphs have several node and edge

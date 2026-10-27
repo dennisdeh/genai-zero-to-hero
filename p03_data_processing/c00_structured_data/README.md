@@ -13,7 +13,7 @@ quality reports) are written to an `outputs/` folder next to each script.
 ```bash
 # s01: cleaning a messy customers/transactions dataset with pandas
 python -m p03_data_processing.c00_structured_data.s01_preprocessing.main_1_cleaning
-# s01: feature engineering + leakage-free sklearn pipeline for churn prediction
+# s01: feature engineering + leakage-free sklearn pipeline for churn prediction (+ target leakage demo)
 python -m p03_data_processing.c00_structured_data.s01_preprocessing.main_2_feature_pipeline
 
 # s02: data quality report (pass/fail checks) on raw vs. clean data

@@ -1,18 +1,25 @@
 name: gzh_ml0
 channels:
   - conda-forge
+# Minimum versions are required by the APIs the scripts use:
+#   scikit-learn >= 1.8: LogisticRegression(l1_ratio=...) without `penalty` (HistGradientBoosting fit(X_val=...) needs >= 1.7)
+#   lightgbm     >= 4.7: LGBMClassifier.fit(eval_X=..., eval_y=...)
+#   mlflow       >= 3.17: log_model(name=..., skops_trusted_types=...), skops as the default sklearn format, and
+#                         MLFLOW_ALLOW_PICKLE_DESERIALIZATION also gating skops loads
+# The numbers quoted in the book were produced with scikit-learn 1.9.1, lightgbm 4.7.0, xgboost 3.4.1, shap 0.54.1,
+# optuna 5.0.0, mlflow 3.17.2 and skops 0.16.0; other versions can give slightly different results.
 dependencies:
   - python=3.13
   - pip
   - numpy
   - scipy
   - pandas
-  - scikit-learn
+  - scikit-learn>=1.8
   - matplotlib
   - threadpoolctl
-  - xgboost
-  - lightgbm
+  - xgboost>=2.0
+  - lightgbm>=4.7
   - shap
   - optuna
-  - mlflow
+  - mlflow>=3.17
   - skops

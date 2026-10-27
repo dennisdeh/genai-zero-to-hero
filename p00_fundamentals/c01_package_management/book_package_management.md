@@ -53,9 +53,12 @@ pyenv, written in Rust by the authors of ruff. It can install Python versions, m
 uv init my-project && cd my-project   # creates pyproject.toml
 uv add numpy scikit-learn             # adds dependencies, updates .venv and uv.lock
 uv run python main.py                 # runs inside the project environment
-uv sync                               # recreate the environment exactly from uv.lock
+uv sync --locked                      # recreate the environment exactly from uv.lock (error if it is outdated)
 uv pip install -r requirements.txt    # pip-compatible interface
 ```
+A plain `uv sync` first re-resolves and updates `uv.lock` if `pyproject.toml` has changed; for an exact
+recreation (e.g. in CI or a Docker build), `--locked` fails instead if the lock file is out of date, and `--frozen`
+installs from `uv.lock` as it is, without checking it against `pyproject.toml`.
 Poetry, PDM and Hatch are other project managers built around `pyproject.toml`; pixi brings lock files and
 project-based workflows to conda packages.
 

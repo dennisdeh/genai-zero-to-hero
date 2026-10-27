@@ -18,6 +18,12 @@ EXAMPLE_FLOWER = {
     "petal_width": 0.2,
 }
 
+# hard upper limit of the number of flowers in one batch request, enforced by the schema (HTTP 422).
+# The configurable MAX_BATCH_SIZE (utils/config.py) can only lower it. Note: the limit is checked while
+# validating the parsed JSON body, so it caps the validation and model work, but not the size of the body
+# itself - a limit on the request body size belongs in the server or reverse proxy in front of the API.
+MAX_INSTANCES_PER_REQUEST = 10_000
+
 
 class IrisFeatures(BaseModel):
     """Measurements of a single iris flower in centimetres (one model input)."""
@@ -36,7 +42,9 @@ class BatchPredictionRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    instances: list[IrisFeatures] = Field(..., min_length=1, description="Flowers to classify")
+    instances: list[IrisFeatures] = Field(
+        ..., min_length=1, max_length=MAX_INSTANCES_PER_REQUEST, description="Flowers to classify"
+    )
 
 
 class Prediction(BaseModel):

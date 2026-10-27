@@ -32,7 +32,7 @@ fails). The script also prints a column *profile* (dtype, missing share, distinc
 most frequent value) - the first thing to look at for any new dataset.
 
 The same suites run on the raw exports and on the cleaned data. On the raw customers 11 of 20
-checks fail (duplicated IDs, text instead of dates and numbers, 25 spellings of five countries,
+checks fail (duplicated IDs, text instead of dates and numbers, 24 spellings of five countries,
 invalid emails, ...); on the clean data all checks pass. The report is saved as CSV (for machines,
 e.g. to track quality over time) and as HTML (for humans) in `outputs/`.
 
@@ -47,7 +47,9 @@ data) with a new batch column by column:
   Categories are used directly as bins. Rule of thumb: below 0.1 stable, 0.1-0.25 moderate shift,
   above 0.25 significant shift.
 - **Two-sample Kolmogorov-Smirnov test** (numeric): the statistic is the largest vertical distance
-  between the two empirical cumulative distribution functions (`scipy.stats.ks_2samp`).
+  between the two empirical cumulative distribution functions (`scipy.stats.ks_2samp`). The test
+  assumes continuous data; for discrete columns with many ties (counts such as support tickets) its
+  p-values are conservative, i.e. it flags drift less often than the nominal significance level.
 - **Chi-squared test** (categorical): are the category frequencies independent of the batch
   (`scipy.stats.chi2_contingency`)?
 

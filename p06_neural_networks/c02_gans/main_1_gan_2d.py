@@ -58,17 +58,21 @@ def mlp(in_dim: int, out_dim: int, hidden: int, act: type[nn.Module]) -> nn.Sequ
                          nn.Linear(hidden, hidden), act(), nn.Linear(hidden, out_dim))
 
 
-def mode_metrics(samples: torch.Tensor) -> tuple[int, float]:
+def mode_metrics(samples: torch.Tensor, min_share: float = 0.2) -> tuple[int, float]:
     """
     A sample is "high quality" if it lies within 3 standard deviations of some mode centre.
-    A mode is "covered" if it receives at least 1% of the high-quality samples.
+    A mode is "covered" if the high-quality samples near it make up at least `min_share` of the 1/8 of *all*
+    samples a perfect generator would put there (default: 2.5% of all samples). Counting against all samples,
+    not only the high-quality ones, means a generator that produces mostly garbage cannot cover a mode with a
+    handful of lucky samples. Report both numbers: coverage measures diversity, the high-quality fraction
+    measures fidelity.
     Returns (number of covered modes, fraction of high-quality samples).
     """
     d = torch.cdist(samples.cpu(), CENTRES)  # (n, 8) distances to every centre
     dmin, nearest = d.min(dim=1)
     good = dmin < 3 * MODE_STD
-    counts = torch.bincount(nearest[good], minlength=N_MODES)
-    covered = int((counts >= 0.01 * max(1, int(good.sum()))).sum()) if good.any() else 0
+    counts = torch.bincount(nearest[good], minlength=N_MODES)  # high-quality samples per mode
+    covered = int((counts >= min_share * len(samples) / N_MODES).sum())
     return covered, float(good.float().mean())
 
 
