@@ -12,7 +12,7 @@ yaml-files with `conda_env_gzh_`, which can of course be omitted.
 `conda env update --prefix ./env --file conda_env_{NEW}.yml  --prune`
 
 #### create a conda environment from an environment file
-`conda env create -f gzh_base_env.yml`
+`conda env create -f conda_env_gzh_base.yml`
 
 #### create a new base conda environment w. python
 `conda create --name gzh_{NEW} python=3.12 --channel conda-forge --override-channels`

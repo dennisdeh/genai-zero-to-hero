@@ -1,0 +1,71 @@
+# Example pyproject.toml (stored here as an example; it is NOT active in this repository).
+# pyproject.toml is the standard place for project metadata (PEP 621) and for the configuration of most
+# Python tools. Copy it to the root of your own project as `pyproject.toml` and adapt it.
+# Documentation: https://packaging.python.org/en/latest/guides/writing-pyproject-toml/
+
+[project]
+name = "my-ml-project"
+version = "0.1.0"
+description = "An example ML project following the practices of p00_fundamentals/c00_best_practices"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=2.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff", "mypy", "pre-commit"]
+
+# ---------------------------------------------------------------------------------------------------
+# ruff: linter and formatter (https://docs.astral.sh/ruff/configuration/)
+# ---------------------------------------------------------------------------------------------------
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+extend-exclude = ["outputs", "notebooks"]
+
+[tool.ruff.lint]
+# E/W: pycodestyle, F: pyflakes, I: isort, B: bugbear, UP: pyupgrade, SIM: simplify, NPY: numpy-specific rules
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "NPY"]
+ignore = [
+    "NPY002",  # legacy np.random.* calls: allowed for seeding third-party code (see utils/reproducibility.py)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"test_*.py" = ["B018"]  # useless expressions are sometimes fine in tests
+
+[tool.ruff.format]
+quote-style = "double"
+
+# black (only if you use black instead of ruff-format)
+[tool.black]
+line-length = 120
+
+# ---------------------------------------------------------------------------------------------------
+# pytest (https://docs.pytest.org/en/stable/reference/customize.html)
+# ---------------------------------------------------------------------------------------------------
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = ["-ra", "--strict-markers"]
+markers = [
+    "slow: tests that take more than a few seconds (deselect with -m 'not slow')",
+]
+filterwarnings = ["error"]  # turn warnings into errors, so they are fixed rather than ignored
+
+# ---------------------------------------------------------------------------------------------------
+# mypy: static type checking (https://mypy.readthedocs.io/en/stable/config_file.html)
+# ---------------------------------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.11"
+strict = false
+disallow_untyped_defs = true   # every function needs type hints
+warn_unused_ignores = true
+warn_return_any = true
+ignore_missing_imports = true  # many ML libraries ship without type information
+explicit_package_bases = true  # resolve module names from the project root (needed for namespace packages)
+
+# relax the rules for the test suite (assuming the tests live in a tests/ package)
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+disallow_untyped_defs = false

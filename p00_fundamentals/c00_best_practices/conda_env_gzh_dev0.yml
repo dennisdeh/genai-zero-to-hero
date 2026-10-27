@@ -1,0 +1,15 @@
+name: gzh_dev0
+channels:
+  - conda-forge
+dependencies:
+  - python=3.13
+  - pip
+  - numpy
+  - pytest
+  - pytest-cov
+  - hypothesis
+  - python-dotenv
+  - ruff
+  - black
+  - mypy
+  - pre-commit

@@ -1,0 +1,46 @@
+# Example pre-commit configuration (stored here as an example; it is NOT active in this repository).
+# To use it in your own project:
+#   1. copy it to the root of your git repository as `.pre-commit-config.yaml`
+#   2. pip install pre-commit   (or: conda install -c conda-forge pre-commit)
+#   3. pre-commit install          # installs the git hook: the checks now run on every `git commit`
+#   4. pre-commit run --all-files  # run all hooks once on the whole code base
+#   5. pre-commit autoupdate       # bump the pinned `rev`s from time to time
+# Hooks only see the staged files of a commit. Hooks that modify files (formatters, fixers) make the
+# commit fail; review the changes, `git add` them and commit again.
+# Documentation: https://pre-commit.com/
+default_language_version:
+  python: python3
+repos:
+  # generic file hygiene, maintained by the pre-commit project
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: end-of-file-fixer         # every file ends with exactly one newline
+      - id: trailing-whitespace
+      - id: check-yaml                # YAML files parse
+      - id: check-toml                # TOML files parse
+      - id: check-merge-conflict      # no leftover <<<<<<< markers
+      - id: check-added-large-files   # keep data and model files out of git
+        args: ["--maxkb=1000"]
+      - id: detect-private-key        # block committed SSH/TLS private keys
+
+  # ruff: fast linter (replaces flake8, isort, pyupgrade, ...) and formatter (black-compatible)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.2
+    hooks:
+      - id: ruff-check
+        args: ["--fix"]               # fix what can be fixed automatically, e.g. import order
+      - id: ruff-format
+
+  # alternative to ruff-format: black (use one formatter, not both)
+  # - repo: https://github.com/psf/black-pre-commit-mirror
+  #   rev: 26.10.1
+  #   hooks:
+  #     - id: black
+
+  # optional: static type checking (slower; many teams run it in CI only)
+  # - repo: https://github.com/pre-commit/mirrors-mypy
+  #   rev: v2.4.0
+  #   hooks:
+  #     - id: mypy
+  #       additional_dependencies: ["numpy"]
