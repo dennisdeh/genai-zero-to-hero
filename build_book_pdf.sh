@@ -2,7 +2,7 @@
 # Script to generate a pdf that contains all chapters and sections of the book
 # Instructions (linux) - by doing the following in the terminal:
 #   1. install pandoc and texlive (with xelatex) by running:
-#      sudo apt update && sudo apt install -y pandoc texlive texlive-xetex texlive-fonts-recommended texlive-latex-extra
+#      sudo apt update && sudo apt install -y pandoc texlive texlive-xetex texlive-fonts-recommended texlive-latex-extra fonts-dejavu
 #   2. navigate to the repository root
 #   3. make the script executable by running: chmod +x build_book_pdf.sh
 #   4. generate the book pdf by running: ./build_book_pdf.sh
