@@ -50,8 +50,9 @@ def train_custom_tokeniser(
         ]
     else:
         special_tokens = list({*special_tokens, unknown_token})
-    # prepare path
+    # prepare path (the folder is gitignored and may not exist yet)
     path = os.path.abspath(os.path.join(path))
+    os.makedirs(path, exist_ok=True)
 
     # 1: Get data and instantiate tokeniser
     tokenizer = Tokenizer(BPE(unk_token=unknown_token))

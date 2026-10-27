@@ -397,7 +397,7 @@ def data_preparation_finance(
                 a_tokens = a_tokens[:available_for_answer]
                 total_len = len(q_tokens) + len(a_tokens) + 3
                 n_truncated += 1
-                filtered_train.append((q, q_tokens, a, a_tokens))
+                filtered_val.append((q, q_tokens, a, a_tokens))
                 max_tokens = max(max_tokens, total_len)
             else:
                 n_too_long += 1

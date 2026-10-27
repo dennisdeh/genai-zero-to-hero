@@ -1,0 +1,14 @@
+name: gzh_llm7
+channels:
+  - conda-forge
+dependencies:
+  - python=3.13
+  - pip
+  - pydantic
+  - requests
+  - pandas
+  - pytest
+  - mlflow
+  - langchain-core
+  - langchain-ollama
+  - langchain-openai

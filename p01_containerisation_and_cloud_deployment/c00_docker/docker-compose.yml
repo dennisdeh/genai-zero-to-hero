@@ -1,0 +1,49 @@
+# Docker compose setup for the containerised iris API.
+# Run from the repository root:
+#   docker compose -f p01_containerisation_and_cloud_deployment/c00_docker/docker-compose.yml up --build -d
+# Relative paths in this file are resolved relative to this file's folder, hence context "../..".
+
+services:
+  api:
+    build:
+      context: ../..   # the repository root (the image needs the p00 code)
+      dockerfile: p01_containerisation_and_cloud_deployment/c00_docker/Dockerfile
+      args:
+        MODEL_VERSION: "1.0.0"
+    image: gzh-iris-api:0.1.0
+    container_name: gzh-iris-api
+    ports:
+      - "${API_PORT_HOST:-5000}:5000"   # host:container
+    environment:
+      LOG_LEVEL: INFO
+      MAX_BATCH_SIZE: "1000"
+    # optional: serve a model from the host instead of the one baked into the image (a bind mount);
+    # train it first with: python -m p00_fundamentals.c02_fastapi.main_train_model
+    # volumes:
+    #   - ../../p00_fundamentals/c02_fastapi/outputs/model:/models/iris:ro
+    # and set MODEL_DIR: /models/iris above
+    read_only: true          # the container does not need to write to its file system ...
+    tmpfs:
+      - /tmp                 # ... except for temporary files
+    networks:
+      - backend
+    restart: unless-stopped
+    # the HEALTHCHECK of the Dockerfile is inherited; `docker compose ps` shows the health status
+
+  # a one-off client calling the API over the compose network, where the service name "api" is the host name:
+  #   docker compose -f p01_containerisation_and_cloud_deployment/c00_docker/docker-compose.yml run --rm client
+  client:
+    image: gzh-iris-api:0.1.0
+    command: ["python", "-m", "p00_fundamentals.c02_fastapi.main_client"]
+    environment:
+      API_URL: http://api:5000
+    depends_on:
+      api:
+        condition: service_healthy   # wait until the health check passes
+    networks:
+      - backend
+    profiles:
+      - client   # not started by `docker compose up`, only on demand
+
+networks:
+  backend:

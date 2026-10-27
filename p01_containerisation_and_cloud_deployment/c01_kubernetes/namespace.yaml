@@ -1,0 +1,6 @@
+# A namespace groups the resources of this example and makes clean-up easy:
+#   kubectl delete namespace gzh
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gzh

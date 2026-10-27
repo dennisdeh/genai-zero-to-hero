@@ -1,0 +1,22 @@
+name: gzh_data0
+channels:
+  - conda-forge
+dependencies:
+  - python=3.13
+  - pip
+  - numpy
+  - pandas
+  - pyarrow
+  - sqlalchemy
+  - scikit-learn
+  - requests
+  - urllib3
+  - beautifulsoup4
+  - lxml
+  - apscheduler
+  - datasets
+  - huggingface_hub
+  - pip:
+      - kaggle
+      - kagglehub
+      - openml

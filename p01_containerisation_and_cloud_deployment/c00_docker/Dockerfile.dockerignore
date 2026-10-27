@@ -1,0 +1,20 @@
+# Dockerfile-specific ignore file (BuildKit): applies to builds using the Dockerfile next to it, so the
+# whole repository can be used as build context without sending gigabytes of unrelated files.
+# Strategy: ignore everything, then re-include only what the image needs (an "allowlist").
+*
+
+# application code and image dependencies
+!p00_fundamentals/c02_fastapi
+!p01_containerisation_and_cloud_deployment/c00_docker/requirements.txt
+
+# never send generated artefacts, caches or secrets, even inside the re-included folders
+**/outputs
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.env
+
+# documentation, conda environments and tests are not needed at runtime
+**/*.md
+**/conda_env_*.yml
+**/test_*.py

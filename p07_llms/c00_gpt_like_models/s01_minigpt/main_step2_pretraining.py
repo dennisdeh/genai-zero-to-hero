@@ -163,6 +163,7 @@ if training:
     # save the model
     # Use .module.state_dict() if wrapped to avoid prefixing keys with "module."
     raw_model = model.module if hasattr(model, "module") else model
+    os.makedirs(path_model, exist_ok=True)  # the folder is gitignored
     torch.save(
         raw_model.state_dict(),
         os.path.join(
