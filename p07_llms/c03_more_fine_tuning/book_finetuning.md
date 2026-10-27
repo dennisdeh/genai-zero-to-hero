@@ -73,10 +73,10 @@ has three stages:
 3. **RL with PPO** (Proximal Policy Optimisation, Schulman et al. 2017): the policy maximises the reward model's
    score while a KL penalty keeps it close to the SFT (reference) model, so it does not drift into gibberish that
    happens to fool the reward model:
-   $$\max_\theta\; \mathbb{E}_{q,\, o \sim \pi_\theta}\left[ r_\phi(q, o) \right] - \beta\, \mathrm{KL}\left(\pi_\theta \,\|\, \pi_\mathrm{ref}\right).$$
+   $$\max_\theta\; \mathbb{E}_{q,\, o \sim \pi_\theta}\left[ r_\phi(q, o) \right] - \beta\, \mathrm{KL}\left(\pi_\theta \,\|\, \pi_{\mathrm{ref}}\right).$$
 
 PPO optimises a clipped surrogate objective. With the probability ratio
-$\rho_t = \pi_\theta(o_t \mid q, o_{<t}) / \pi_{\theta_\mathrm{old}}(o_t \mid q, o_{<t})$ and an advantage estimate
+$\rho_t = \pi_\theta(o_t \mid q, o_{<t}) / \pi_{\theta_{\mathrm{old}}}(o_t \mid q, o_{<t})$ and an advantage estimate
 $\hat{A}_t$ (how much better the action was than expected) it maximises
 $\min\left(\rho_t \hat{A}_t,\; \mathrm{clip}(\rho_t, 1-\epsilon, 1+\epsilon)\, \hat{A}_t\right)$, which prevents
 overly large policy updates. The advantages are computed with a learned **value model** (critic) of the same size
@@ -87,7 +87,7 @@ is notoriously expensive and finicky to tune.
 Direct Preference Optimisation (Rafailov et al. 2023) shows that the KL-regularised RLHF objective has a closed-form
 optimal policy, which allows the reward model to be expressed through the policy itself. The result is a simple
 classification-like loss on preference pairs, with no sampling, no reward model and no value model:
-$$\mathcal{L}_\mathrm{DPO} = -\log \sigma\left( \beta \log \frac{\pi_\theta(o_w \mid q)}{\pi_\mathrm{ref}(o_w \mid q)} - \beta \log \frac{\pi_\theta(o_l \mid q)}{\pi_\mathrm{ref}(o_l \mid q)} \right).$$
+$$\mathcal{L}_{\mathrm{DPO}} = -\log \sigma\left( \beta \log \frac{\pi_\theta(o_w \mid q)}{\pi_{\mathrm{ref}}(o_w \mid q)} - \beta \log \frac{\pi_\theta(o_l \mid q)}{\pi_{\mathrm{ref}}(o_l \mid q)} \right).$$
 DPO is cheap and stable and is widely used for aligning chat models to preferences. As an *offline* method it only
 learns from a fixed set of answers, though, and cannot explore new solutions the way online RL can.
 
@@ -100,9 +100,9 @@ $$\hat{A}_i = \frac{r_i - \mathrm{mean}(r_1, \dots, r_G)}{\mathrm{std}(r_1, \dot
 Every token of completion $o_i$ receives the advantage $\hat{A}_i$. Answers that are better than their siblings are
 reinforced, worse ones are suppressed. The objective keeps PPO's clipping and adds the KL penalty directly to the
 loss (rather than to the reward):
-$$\mathcal{J}_\mathrm{GRPO}(\theta) = \frac{1}{G}\sum_{i=1}^{G} \frac{1}{|o_i|} \sum_{t=1}^{|o_i|}
+$$\mathcal{J}_{\mathrm{GRPO}}(\theta) = \frac{1}{G}\sum_{i=1}^{G} \frac{1}{|o_i|} \sum_{t=1}^{|o_i|}
 \left[ \min\left(\rho_{i,t} \hat{A}_i,\; \mathrm{clip}(\rho_{i,t}, 1-\epsilon, 1+\epsilon)\, \hat{A}_i\right) -
-\beta\, \mathbb{D}_\mathrm{KL}\left(\pi_\theta \,\|\, \pi_\mathrm{ref}\right) \right].$$
+\beta\, \mathbb{D}_{\mathrm{KL}}\left(\pi_\theta \,\|\, \pi_{\mathrm{ref}}\right) \right].$$
 Consequences worth noting:
 
 - No critic: only the policy and (if $\beta > 0$) a frozen reference model are needed. With LoRA the reference is

@@ -49,7 +49,7 @@ avoids materialising the $n \times n$ matrix in GPU memory, which made long cont
 **KV cache memory** grows linearly. During generation the keys and values of all previous tokens are cached
 so that each new token needs only one forward step. The cache size is
 
-$$\text{KV bytes} = 2 \times n_\text{layers} \times n_\text{kv heads} \times d_\text{head} \times n_\text{tokens} \times \text{bytes per value}.$$
+$$\text{KV bytes} = 2 \times n_{\text{layers}} \times n_{\text{kv heads}} \times d_{\text{head}} \times n_{\text{tokens}} \times \text{bytes per value}.$$
 
 For Qwen3-8B (36 layers, 8 KV heads, head dimension 128, fp16) this is 144 KiB per token: 4.5 GB for 32k
 tokens, 18 GB for 128k tokens - per concurrent request, on top of the weights. Architectural tricks reduce

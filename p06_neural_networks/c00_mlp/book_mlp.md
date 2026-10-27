@@ -83,10 +83,10 @@ automatically when `loss.backward()` is called.
 The initial weights must break the symmetry between neurons (all-zero weights would make all neurons in a
 layer identical forever) and keep the scale of the activations and gradients roughly constant across
 layers. If the weights are too small the signal shrinks layer by layer (vanishing gradients); too large and it
-explodes. Two standard choices, with $n_\text{in}$ and $n_\text{out}$ the fan-in and fan-out of the layer:
+explodes. Two standard choices, with $n_{\text{in}}$ and $n_{\text{out}}$ the fan-in and fan-out of the layer:
 
-- **Xavier/Glorot** (tanh, sigmoid): $\mathrm{Var}(w) = 2/(n_\text{in} + n_\text{out})$,
-- **He/Kaiming** (ReLU, which zeroes half of its inputs): $\mathrm{Var}(w) = 2/n_\text{in}$.
+- **Xavier/Glorot** (tanh, sigmoid): $\mathrm{Var}(w) = 2/(n_{\text{in}} + n_{\text{out}})$,
+- **He/Kaiming** (ReLU, which zeroes half of its inputs): $\mathrm{Var}(w) = 2/n_{\text{in}}$.
 
 `main_1_mlp_numpy.py` trains the same network with He, Xavier and deliberately tiny ($\mathrm{std}=0.01$)
 weights. With tiny weights the loss is stuck at $\log 2 \approx 0.693$ (random guessing) for dozens of epochs

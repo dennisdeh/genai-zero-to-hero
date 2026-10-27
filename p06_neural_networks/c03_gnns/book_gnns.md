@@ -115,7 +115,7 @@ bound. Mean and max aggregators lose information: mean cannot count (a node with
 like one with one red neighbour) and max ignores multiplicities altogether.
 
 The offline dataset consists of 600 random graphs from three generative models with similar sizes (20–40 nodes)
-and average degree (≈4): Erdős–Rényi (independent random edges), Barabási–Albert (preferential attachment,
+and average degree (about 4): Erdős–Rényi (independent random edges), Barabási–Albert (preferential attachment,
 producing hubs) and Watts–Strogatz (a ring lattice with some rewired edges, "small world"). By default every
 node has the same constant feature, so the network must discover the structural differences itself; with
 `--features degree` it gets the one-hot degree as input. Mini-batching works differently from images: PyG's

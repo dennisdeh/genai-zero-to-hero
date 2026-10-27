@@ -1,7 +1,7 @@
 ## Generative Adversarial Networks
 
 The networks in the previous chapters are *discriminative*: they learn $p(y \mid \mathbf{x})$, a label given an
-input. *Generative* models learn the data distribution $p_\text{data}(\mathbf{x})$ itself, so that new samples –
+input. *Generative* models learn the data distribution $p_{\text{data}}(\mathbf{x})$ itself, so that new samples –
 images, sounds, molecules – can be drawn from it. Generative adversarial networks (GANs, Goodfellow et al. 2014)
 do this without ever writing down a likelihood: a **generator** network $G$ turns random noise
 $\mathbf{z} \sim p_z = \mathcal{N}(0, I)$ into samples $G(\mathbf{z})$, and a **discriminator** network $D$ tries to tell
@@ -18,14 +18,14 @@ Both run offline on a CPU in about a minute.
 ### The minimax game
 $D(\mathbf{x}) \in (0,1)$ is the probability that $\mathbf{x}$ is real. The original GAN objective is a two-player
 minimax game:
-$$ \min_G \max_D \; V(D, G) = \mathbb{E}_{\mathbf{x} \sim p_\text{data}}\big[\log D(\mathbf{x})\big] + \mathbb{E}_{\mathbf{z} \sim p_z}\big[\log\big(1 - D(G(\mathbf{z}))\big)\big]. $$
+$$ \min_G \max_D \; V(D, G) = \mathbb{E}_{\mathbf{x} \sim p_{\text{data}}}\big[\log D(\mathbf{x})\big] + \mathbb{E}_{\mathbf{z} \sim p_z}\big[\log\big(1 - D(G(\mathbf{z}))\big)\big]. $$
 For the discriminator this is just the binary cross-entropy of a classifier with labels real $=1$, fake $=0$.
 For a fixed generator with sample distribution $p_g$ the optimal discriminator is
-$$ D^*(\mathbf{x}) = \frac{p_\text{data}(\mathbf{x})}{p_\text{data}(\mathbf{x}) + p_g(\mathbf{x})}, $$
+$$ D^*(\mathbf{x}) = \frac{p_{\text{data}}(\mathbf{x})}{p_{\text{data}}(\mathbf{x}) + p_g(\mathbf{x})}, $$
 and plugging it back in gives
-$$ V(D^*, G) = -\log 4 + 2\, \mathrm{JS}\big(p_\text{data} \,\Vert\, p_g\big), $$
+$$ V(D^*, G) = -\log 4 + 2\, \mathrm{JS}\big(p_{\text{data}} \,\Vert\, p_g\big), $$
 where JS is the Jensen–Shannon divergence. The generator therefore minimises a divergence between the real and
-the generated distribution, with the global optimum $p_g = p_\text{data}$ (where $D^* = 1/2$ everywhere).
+the generated distribution, with the global optimum $p_g = p_{\text{data}}$ (where $D^* = 1/2$ everywhere).
 
 ### Non-saturating loss
 In practice the generator's term $\log(1 - D(G(\mathbf{z})))$ is a poor training signal. Early in training the

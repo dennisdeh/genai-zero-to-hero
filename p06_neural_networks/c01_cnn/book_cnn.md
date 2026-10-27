@@ -25,15 +25,15 @@ number of training images for a quick CPU run.
 A 2D convolution slides a small kernel $K$ of size $k \times k$ over the image $X$ and computes a weighted
 sum at every position (strictly speaking a cross-correlation, but the name stuck):
 $$ Y_{i,j} = b + \sum_{u=0}^{k-1} \sum_{v=0}^{k-1} K_{u,v}\, X_{i+u,\, j+v}. $$
-With $C_\text{in}$ input channels (e.g. RGB) and $C_\text{out}$ output channels, each output channel has its own
-$C_\text{in} \times k \times k$ kernel and sums over all input channels:
-$$ Y_{c,i,j} = b_c + \sum_{c'=1}^{C_\text{in}} \sum_{u,v} K_{c,c',u,v}\, X_{c',\, i+u,\, j+v}. $$
+With $C_{\text{in}}$ input channels (e.g. RGB) and $C_{\text{out}}$ output channels, each output channel has its own
+$C_{\text{in}} \times k \times k$ kernel and sums over all input channels:
+$$ Y_{c,i,j} = b_c + \sum_{c'=1}^{C_{\text{in}}} \sum_{u,v} K_{c,c',u,v}\, X_{c',\, i+u,\, j+v}. $$
 A `Conv2d(64, 128, kernel_size=3)` therefore has $128 \cdot 64 \cdot 9 + 128 \approx 74{,}000$ parameters,
 independent of the image size – a fully connected layer between two $64\times 32\times 32$ and
 $128 \times 32 \times 32$ tensors would need $\approx 8.6 \cdot 10^9$.
 
 The output size along each spatial dimension is
-$$ n_\text{out} = \left\lfloor \frac{n_\text{in} + 2p - k}{s} \right\rfloor + 1 $$
+$$ n_{\text{out}} = \left\lfloor \frac{n_{\text{in}} + 2p - k}{s} \right\rfloor + 1 $$
 for padding $p$ and stride $s$; with $k=3$, $p=1$, $s=1$ ("same" padding, used in the scripts) the resolution is
 preserved. The output channels are called *feature maps*: each one shows where in the image its filter
 responded strongly.
@@ -48,7 +48,7 @@ Pooling and strides grow the receptive field faster.
   adds some invariance to small shifts and reduces computation; channels are usually doubled when the
   resolution is halved.
 - **Batch normalisation** normalises each channel over the mini-batch,
-  $\hat{x} = (x - \mu_\mathcal{B})/\sqrt{\sigma^2_\mathcal{B} + \epsilon}$, followed by a learnable scale and shift
+  $\hat{x} = (x - \mu_{\mathcal{B}})/\sqrt{\sigma^2_{\mathcal{B}} + \epsilon}$, followed by a learnable scale and shift
   $\gamma \hat{x} + \beta$. It stabilises and accelerates training and allows higher learning rates. During
   evaluation the running averages of $\mu$ and $\sigma^2$ collected during training are used – another reason to
   call `model.eval()`. (A convolution followed by batch norm needs no bias: $\beta$ plays that role.)

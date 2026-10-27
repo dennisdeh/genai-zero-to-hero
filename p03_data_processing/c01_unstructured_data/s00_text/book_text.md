@@ -3,7 +3,7 @@ Text looks simple - a sequence of characters - but a computer sees a sequence of
 Unicode *code points*. Most problems in text processing come from this gap:
 
 - the same visible text can have different code points (`é` as one character or as `e` + a combining
-  accent; the ligature `ﬁ` versus `f` + `i`; full-width digits versus ASCII digits),
+  accent; the ligature `ﬁ` (U+FB01) versus `f` + `i`; full-width digits versus ASCII digits),
 - invisible characters (zero-width spaces, byte order marks, control characters) break string
   comparisons and searches,
 - typographic punctuation (`“ ” ‘ ’ –`) differs from its ASCII counterparts,
@@ -18,7 +18,7 @@ The script applies a small pipeline to a few messy example documents:
   followed by `html.unescape` (`&amp;` → `&`, `&nbsp;` → no-break space).
 - **Unicode normalisation** with `unicodedata.normalize`. *NFC* composes characters without changing
   their meaning and should always be applied; *NFKC* additionally maps compatibility characters to
-  their plain equivalents (`ﬁ` → `fi`, full-width digits → ASCII digits, the Roman numeral character U+2173 → `iv`). Format and control characters
+  their plain equivalents (U+FB01 `ﬁ` → `fi`, full-width digits → ASCII digits, the Roman numeral character U+2173 → `iv`). Format and control characters
   (Unicode categories `Cf`, `Cc`) are dropped and typographic quotes and dashes are mapped to ASCII.
 - **Masking personal data** (PII) with regular expressions: emails, URLs, IBAN-like account numbers and
   phone numbers are replaced by placeholders such as `<EMAIL>`. Regular expressions are a pragmatic
