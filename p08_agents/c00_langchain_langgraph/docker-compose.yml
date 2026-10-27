@@ -54,7 +54,7 @@ services:
     container_name: gzh-adminer_agents_rag
     image: adminer:latest
     environment:
-      ADMINER_DEFAULT_SERVER: gzh-mariadb
+      ADMINER_DEFAULT_SERVER: mariadb  # compose service name of the database
     restart: always
     ports:
       - ${ADMINER_PORT_HOST}:${ADMINER_PORT_CONT}

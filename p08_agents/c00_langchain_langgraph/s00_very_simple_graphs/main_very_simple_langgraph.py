@@ -2,8 +2,12 @@
 Demonstrate a simple agent graph with nodes, edges, tools, and no AI using LangGraph.
 """
 
+import os
 from typing import TypedDict, Literal
 from langgraph.graph import END, START, StateGraph
+from p08_agents.c00_langchain_langgraph.s00_very_simple_graphs.utils.graphs import (
+    save_graph_image,
+)
 
 
 # We define a custom state type for this dummy agent with just the allowed operations
@@ -88,11 +92,10 @@ graph.add_edge("tool_multiplication", "final")
 graph.add_edge("final", END)
 
 agent = graph.compile()
-with open(
-    "p08_agents/c00_langchain_langraph/s00_very_simple_graph/graph_very_simple.png",
-    "wb",
-) as f:
-    f.write(agent.get_graph().draw_mermaid_png())
+# save a picture of the graph (PNG, or Mermaid text when offline) in outputs/ next to this script
+save_graph_image(
+    agent, os.path.join(os.path.dirname(__file__), "outputs", "graph_very_simple.png")
+)
 
 # run the graph (get final state)
 d = {"operation": "sum", "values": [1, 2, 3, 4]}

@@ -33,6 +33,11 @@ def get_llm(
         base_url_ollama = os.getenv("OLLAMA_BASE_URL", base_url_ollama)
         model = model or os.getenv("OLLAMA_MODEL")
         available_models = ollama_get_available_models(base_url=base_url_ollama)
+        if not available_models:
+            raise RuntimeError(
+                f"No Ollama models available at {base_url_ollama}: is the Ollama server running "
+                "and has a model been pulled (e.g. `ollama pull qwen3:8b`)?"
+            )
 
         if model:
             resolved = normalise_ollama_model(model, available_models)
