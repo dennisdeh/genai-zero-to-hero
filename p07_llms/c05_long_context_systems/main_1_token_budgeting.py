@@ -127,7 +127,7 @@ if __name__ == "__main__":
     header = f"{'model':<48}" + "".join(f"{n:>12,}" for n in lengths)
     print(header + "   tokens")
     for shape in MODEL_SHAPES:
-        row = "".join(f"{kv_cache_bytes(shape, n) / 2**30:>10.1f}GB" for n in lengths)
+        row = "".join(f"{kv_cache_bytes(shape, n) / 2**30:>9.1f}GiB" for n in lengths)
         per_token_kib = kv_cache_bytes(shape, 1) / 1024
         print(f"{shape.name:<48}{row}   ({per_token_kib:.0f} KiB/token)")
     base = lengths[0]
@@ -137,6 +137,7 @@ if __name__ == "__main__":
     )
     print(
         "\nThe KV cache is per sequence: serving 8 concurrent 32k-token requests to Qwen3-8B needs ~"
-        f"{8 * kv_cache_bytes(MODEL_SHAPES[0], 32_768) / 2**30:.0f} GB on top of ~16 GB of fp16 weights. "
-        "This is why Ollama defaults to a small num_ctx and why grouped-query attention (GQA) matters."
+        f"{8 * kv_cache_bytes(MODEL_SHAPES[0], 32_768) / 2**30:.0f} GiB on top of ~15 GiB of fp16 weights. "
+        "This is why Ollama sizes its default num_ctx to the available VRAM and why grouped-query attention "
+        "(GQA) matters."
     )

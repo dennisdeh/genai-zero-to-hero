@@ -9,9 +9,10 @@ to the model and ask it to correct its answer, up to `max_attempts` times.
 from dataclasses import dataclass, field
 from typing import Any, Optional, Type
 
+from langchain_core.exceptions import OutputParserException
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 
 @dataclass
@@ -49,8 +50,9 @@ def extract_with_retry(
     **structured_kwargs: Any,
 ) -> ExtractionResult:
     """
-    Extract `schema` from `text`; on a parsing/validation error, show the model its previous answer and the
-    error message and ask for a corrected answer.
+    Extract `schema` from `text`; on a parsing/validation error (reported via `parsing_error` or
+    raised during the call), show the model its previous answer (when available) and the error message and ask
+    for a corrected answer.
 
     Args:
         llm: Chat model supporting `with_structured_output`.
@@ -70,24 +72,32 @@ def extract_with_retry(
     errors: list[str] = []
 
     for attempt in range(1, max_attempts + 1):
-        out = structured_llm.invoke(messages)
-        if out["parsing_error"] is None and out["parsed"] is not None:
-            return ExtractionResult(
-                parsed=out["parsed"], attempts=attempt, errors=errors
+        raw: Optional[AIMessage] = None
+        try:
+            out = structured_llm.invoke(messages)
+        except (ValidationError, OutputParserException) as exc:
+            # Some providers validate inside the call instead of reporting `parsing_error`: e.g. ChatOpenAI
+            # with method="json_schema" lets the openai SDK parse the response into the pydantic model, so a
+            # failing validator raises here. The raw answer is not available then; we only feed back the error.
+            error = short_error(exc)
+        else:
+            if out["parsing_error"] is None and out["parsed"] is not None:
+                return ExtractionResult(
+                    parsed=out["parsed"], attempts=attempt, errors=errors
+                )
+            error = short_error(
+                out["parsing_error"] or "the model returned no structured output"
             )
-
-        error = short_error(
-            out["parsing_error"] or "the model returned no structured output"
-        )
+            raw = out["raw"]
         errors.append(error)
-        raw: AIMessage = out["raw"]
-        # keep the conversation: previous (wrong) answer + feedback with the validation error
-        messages += [
-            AIMessage(content=raw.content or str(raw.tool_calls)),
+        # keep the conversation: previous (wrong) answer, if known, + feedback with the validation error
+        if raw is not None:
+            messages.append(AIMessage(content=raw.content or str(raw.tool_calls)))
+        messages.append(
             HumanMessage(
                 "Your answer failed validation with this error:\n"
                 f"{error}\n"
                 "Re-read the document carefully and return a corrected answer that satisfies the schema."
-            ),
-        ]
+            )
+        )
     return ExtractionResult(parsed=None, attempts=max_attempts, errors=errors)

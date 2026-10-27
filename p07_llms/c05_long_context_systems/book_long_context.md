@@ -34,10 +34,12 @@ Forgetting to reserve output tokens is a classic bug: the prompt fits, but the a
 computes how many retrieved chunks fit for a 4k and a 32k window.
 
 **Ollama detail.** Ollama allocates the KV cache for a fixed context size per model instance, set by the
-request option `num_ctx` (or the server variable `OLLAMA_CONTEXT_LENGTH`). The default is only a few
-thousand tokens, and a longer prompt is *silently truncated*. `ChatOllama(num_ctx=...)` sets it; the helper
-`get_chat_model(num_ctx=...)` passes it through. Always check `response.usage_metadata["input_tokens"]` when
-working with long prompts.
+request option `num_ctx` (or the server variable `OLLAMA_CONTEXT_LENGTH`). The default depends on the
+Ollama version and the hardware: older versions used 2k-4k tokens, current versions pick it from the
+available VRAM (4k tokens below 24 GiB, 32k for 24-48 GiB, 256k from 48 GiB). Whatever the default, a prompt
+longer than the context window is *silently truncated*, so do not rely on it: set `num_ctx` explicitly.
+`ChatOllama(num_ctx=...)` sets it; the helper `get_chat_model(num_ctx=...)` passes it through. Always check
+`response.usage_metadata["input_tokens"]` when working with long prompts.
 
 ### Why long contexts are expensive
 
@@ -51,8 +53,8 @@ so that each new token needs only one forward step. The cache size is
 
 $$\text{KV bytes} = 2 \times n_{\text{layers}} \times n_{\text{kv heads}} \times d_{\text{head}} \times n_{\text{tokens}} \times \text{bytes per value}.$$
 
-For Qwen3-8B (36 layers, 8 KV heads, head dimension 128, fp16) this is 144 KiB per token: 4.5 GB for 32k
-tokens, 18 GB for 128k tokens - per concurrent request, on top of the weights. Architectural tricks reduce
+For Qwen3-8B (36 layers, 8 KV heads, head dimension 128, fp16) this is 144 KiB per token: 4.5 GiB for 32k
+tokens, 18 GiB for 128k tokens - per concurrent request, on top of the weights. Architectural tricks reduce
 it: **grouped-query attention** (GQA, Ainslie et al., 2023) shares each key/value head between several query
 heads (8 instead of 32 KV heads = 4x less memory), sliding-window attention limits how far back layers look,
 and quantising the cache to 8 bits halves it again. Serving engines such as vLLM manage the cache in pages
@@ -99,8 +101,8 @@ recent tokens, and the long-range decay of RoPE.
 The **needle-in-a-haystack** (NIAH) test makes this visible: insert a single fact at a relative depth of a
 long filler text and ask for it, for a grid of context lengths and depths. `main_2_needle_in_haystack.py`
 runs this against the local model (filler and needles are generated deterministically, `num_ctx` is set
-from the prompt length) and saves a heatmap to `outputs/`. It also sends one long prompt *without* `num_ctx`
-to show Ollama's silent truncation. NIAH is an easy, *retrieval-only* test - modern models usually pass it
+from the prompt length) and saves a heatmap to `outputs/`. It also sends the longest prompt with a deliberately
+small window (`num_ctx=4096`) to show Ollama's silent truncation. NIAH is an easy, *retrieval-only* test - modern models usually pass it
 across their window. Harder benchmarks such as RULER (multiple needles, variable tracking, aggregation) or
 LongBench show that the *effective* context, where performance is still close to short-context quality, is
 often much shorter than the advertised one, especially for small models and for reasoning over many facts.

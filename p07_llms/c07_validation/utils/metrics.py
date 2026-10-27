@@ -1,7 +1,8 @@
 """
 Reference-based metrics for short free-text answers.
 
-- normalise_answer: SQuAD-style normalisation (lower case, no punctuation, no articles, single spaces),
+- normalise_answer: SQuAD-style normalisation (lower case, no punctuation, no articles, single spaces), but
+  numbers are kept intact and canonicalised ('10.0' -> '10', '1,000' -> '1000'), so '1.0%' != '10%',
 - exact_match: 1 if the normalised prediction equals a normalised reference,
 - contains_answer: 1 if a normalised reference occurs in the normalised prediction (lenient; useful for
   chatty models that wrap the answer in a sentence),
@@ -13,6 +14,7 @@ All metrics take the maximum over the reference and its aliases.
 import re
 import string
 from collections import Counter
+from decimal import Decimal, InvalidOperation
 from typing import Iterable
 
 _ARTICLES = re.compile(r"\b(a|an|the)\b")
@@ -20,13 +22,51 @@ _ARTICLES = re.compile(r"\b(a|an|the)\b")
 _PUNCTUATION = set(string.punctuation) - {"%"}
 
 
+# A number: optional minus, digits with optional English thousands separators ('1,000,000'), optional decimal
+# part. It must not be glued to letters ('f1', '10th') and must not continue with '.<digit>' or ',<digit>' (so
+# version strings such as '1.2.3' or lists such as '1,2' are not read as numbers). Decimal commas ('3,5') are
+# deliberately NOT supported: the evaluation set uses English number formatting.
+_NUMBER = re.compile(
+    r"(?<![\w.,])-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?(?![.,]?\d)(?!\w)"
+)
+_PUNCT_BETWEEN_DIGITS = re.compile(r"(?<=\d)[.,](?=\d)")
+
+
+def _canonical_number(token: str) -> str:
+    """
+    '10.0' -> '10', '1,000' -> '1000', '0.50' -> '0.5' (exact decimal arithmetic, no float rounding).
+    """
+    try:
+        value = Decimal(token.replace(",", ""))
+    except InvalidOperation:
+        return token  # cannot happen for _NUMBER matches; kept as a safe fallback
+    if value == 0:
+        value = Decimal(0)  # '-0' and '0.00' -> '0'
+    return format(value.normalize(), "f")
+
+
+def _normalise_text(text: str) -> str:
+    # remaining separators between digits ('1,2', '1.2.3') become spaces instead of gluing the digits together
+    text = _PUNCT_BETWEEN_DIGITS.sub(" ", text)
+    text = text.replace("-", " ").replace("/", " ")
+    return "".join(ch for ch in text if ch not in _PUNCTUATION)
+
+
 def normalise_answer(text: str) -> str:
     """
     Lower-case, replace hyphens/slashes with spaces, remove punctuation and articles, collapse whitespace.
+    Numbers are protected from punctuation removal and canonicalised, so '10.0%' == '10%' and
+    '1,000' == '1000', while '1.0%' != '10%'.
     """
-    text = text.lower().replace("-", " ").replace("/", " ")
-    text = "".join(ch for ch in text if ch not in _PUNCTUATION)
-    text = _ARTICLES.sub(" ", text)
+    text = text.lower()
+    parts: list[str] = []
+    position = 0
+    for match in _NUMBER.finditer(text):
+        parts.append(_normalise_text(text[position : match.start()]))
+        parts.append(_canonical_number(match.group()))
+        position = match.end()
+    parts.append(_normalise_text(text[position:]))
+    text = _ARTICLES.sub(" ", "".join(parts))
     return " ".join(text.split())
 
 

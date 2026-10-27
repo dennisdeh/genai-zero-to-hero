@@ -41,8 +41,10 @@ class Section(BaseModel):
 
 
 class Plan(BaseModel):
+    # min_length=1: an empty plan would start no workers, so the synthesiser would never run. The upper bound
+    # is enforced by truncation in the orchestrator instead (a validation error would waste the whole plan).
     sections: list[Section] = Field(
-        description=f"Between 3 and {MAX_SECTIONS} sections"
+        description=f"Between 3 and {MAX_SECTIONS} sections", min_length=1
     )
 
 
@@ -106,9 +108,10 @@ def build_graph(llm: BaseChatModel) -> CompiledStateGraph:
 
     def synthesiser(state: OrchestratorState) -> OrchestratorState:
         # workers finish in arbitrary order -> sort by the planned index
-        texts = dict(state["completed"])
+        texts = dict(state.get("completed", []))
         parts = [
-            f"## {s.title}\n{texts[i]}" for i, s in enumerate(state["plan"].sections)
+            f"## {s.title}\n{texts.get(i, '(section missing)')}"
+            for i, s in enumerate(state["plan"].sections)
         ]
         return {"briefing": f"# {state['topic']}\n\n" + "\n\n".join(parts)}
 
@@ -135,6 +138,6 @@ if __name__ == "__main__":
     for i, section in enumerate(result["plan"].sections, start=1):
         print(f"{i}. {section.title}: {section.description}")
     print(
-        f"\n===== Briefing ({len(result['completed'])} sections written in parallel) =====\n"
+        f"\n===== Briefing ({len(result.get('completed', []))} sections written in parallel) =====\n"
     )
-    print(result["briefing"])
+    print(result.get("briefing", "(no briefing: the plan had no sections)"))

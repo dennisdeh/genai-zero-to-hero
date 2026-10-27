@@ -66,9 +66,12 @@ def chunk_by_tokens(
     """
     Split text into chunks of about `chunk_tokens` tokens (a sliding window over sentences).
 
-    Splitting happens at sentence boundaries ('. '), so chunks never cut a sentence in half. With
-    `overlap_tokens > 0`, the last sentences of a chunk are repeated at the start of the next one, so that
-    facts spanning a chunk boundary are not lost.
+    Splitting happens at sentence boundaries ('. '), so chunks never cut a sentence in half. Each chunk is
+    measured as the joined text (including the joining spaces), so it stays within `chunk_tokens` - except a
+    single sentence that is longer than the budget on its own, which becomes its own (oversized) chunk. With
+    `overlap_tokens > 0`, the last sentences of a chunk are repeated at the start of the next one (about
+    `overlap_tokens` tokens, estimated from per-sentence counts), so that facts spanning a chunk boundary are
+    not lost.
     """
     sentences = [
         s.strip() + "." for s in text.replace("\n", " ").split(". ") if s.strip()
@@ -77,11 +80,13 @@ def chunk_by_tokens(
     chunks: list[str] = []
     start = 0
     while start < len(sentences):
-        end, size = start, 0
+        end = start + 1  # a chunk always holds at least one sentence
+        # grow the chunk while the joined text (spaces included) still fits; the per-sentence sum is a cheap
+        # lower bound that avoids re-counting once the budget is clearly exceeded
         while end < len(sentences) and (
-            size + lengths[end] <= chunk_tokens or end == start
+            sum(lengths[start : end + 1]) <= chunk_tokens
+            and counter(" ".join(sentences[start : end + 1])) <= chunk_tokens
         ):
-            size += lengths[end]
             end += 1
         chunks.append(" ".join(sentences[start:end]))
         if end >= len(sentences):

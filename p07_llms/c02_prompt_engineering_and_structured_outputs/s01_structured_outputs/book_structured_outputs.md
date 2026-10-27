@@ -56,6 +56,12 @@ instead of raising, which is what we need for retries and for logging failures.
    message containing the validation error to the conversation, and ask for a corrected answer,
 3. stop after `max_attempts` and return the errors.
 
+Not every provider reports validation failures through `parsing_error`. With `ChatOpenAI` and the default
+`method="json_schema"`, the openai SDK parses the response into the pydantic model inside the call, so a
+failing validator *raises* a `ValidationError` even with `include_raw=True`. The loop therefore also catches
+`ValidationError`/`OutputParserException` and feeds that error back (without the previous answer, which is
+not available in that case).
+
 `main_2_invoice_extraction_with_retry.py` first shows what pydantic catches on a hand-made bad record (no
 LLM needed), then extracts two invoices. The first is consistent and usually validates at once. The second
 contains a typo in the source document (the stated total is 565.00, but 444.00 + 111.00 = 555.00).

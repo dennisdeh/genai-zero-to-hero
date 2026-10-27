@@ -26,7 +26,7 @@ EVAL_SET: list[dict] = [
         "category": "finance",
         "question": "What is the name of Denmark's central bank?",
         "reference": "Danmarks Nationalbank",
-        "aliases": ["Nationalbanken", "the Danish central bank"],
+        "aliases": ["Nationalbanken"],
     },
     {
         "id": "fin-04",

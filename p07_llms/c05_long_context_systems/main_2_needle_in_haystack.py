@@ -8,8 +8,11 @@ is printed and saved as a CSV file and a heatmap in outputs/.
 
 Important Ollama detail: the context window is set per request with `num_ctx`. If the prompt is longer than
 num_ctx, Ollama silently truncates it - the model never sees part of the document. We therefore set num_ctx
-from the estimated prompt length, and finally run one request WITHOUT num_ctx to show the effect: compare the
-number of input tokens reported by Ollama (usage_metadata) with our estimate.
+from the estimated prompt length, and finally run the longest prompt with a deliberately small window
+(num_ctx=TRUNCATION_DEMO_NUM_CTX) to show the effect: compare the number of input tokens reported by Ollama
+(usage_metadata) with our estimate. We set the small window explicitly instead of relying on the server default,
+because Ollama's default context length depends on the version and the available VRAM (4k tokens on small GPUs,
+32k or more on large ones).
 
 How to run (from the repo root, with Ollama running):
     python -m p07_llms.c05_long_context_systems.main_2_needle_in_haystack
@@ -40,6 +43,7 @@ CONTEXT_LENGTHS = [
 ]
 DEPTHS = [0.0, 0.25, 0.5, 0.75, 1.0]
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "outputs")
+TRUNCATION_DEMO_NUM_CTX = 4096  # deliberately smaller than the longest prompt
 SYSTEM_PROMPT = "You answer questions about the document provided by the user, using only that document."
 
 
@@ -165,13 +169,17 @@ if __name__ == "__main__":
         print(f"{n:>7,}  " + " ".join(f"{'x' if m else '.':>5}" for m in marks))
     save_results(rows)
 
-    # 3. The num_ctx pitfall: the same long prompt with Ollama's default context window
+    # 3. The num_ctx pitfall: the same long prompt in a context window that is too small. We set the small
+    # window explicitly: the server default depends on the Ollama version and the VRAM (it can be 32k+).
     longest = max(CONTEXT_LENGTHS)
     messages, answer = build_messages(longest, 0.0, seed=12345)
-    llm_default = get_chat_model(temperature=0, num_predict=256)
-    result = run_trial(llm_default, messages, answer)
+    llm_small = get_chat_model(
+        temperature=0, num_ctx=TRUNCATION_DEMO_NUM_CTX, num_predict=256
+    )
+    result = run_trial(llm_small, messages, answer)
     print(
-        f"\nWithout num_ctx (server default), needle at the start of a ~{longest:,}-token document:"
+        f"\nWith num_ctx={TRUNCATION_DEMO_NUM_CTX} (too small), needle at the start of a "
+        f"~{longest:,}-token document:"
     )
     print(
         f"  {'FOUND' if result['found'] else 'MISSED'}; input tokens reported by the server: "

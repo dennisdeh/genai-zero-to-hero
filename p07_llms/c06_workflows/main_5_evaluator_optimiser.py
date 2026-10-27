@@ -14,6 +14,7 @@ How to run (from the repo root, with Ollama running):
 """
 
 import operator
+import re
 from typing import Annotated, Literal, TypedDict
 
 from langchain_core.language_models import BaseChatModel
@@ -30,12 +31,16 @@ from p07_llms.c06_workflows.utils.graphs import save_graph
 
 MAX_ITERATIONS = 3
 MAX_WORDS = 120
-FORBIDDEN = [
-    "compensation",
-    "refund",
-    "guarantee",
-    "we will pay",
-]  # legal says: no promises in first reply
+# Legal says: no promises in the first reply. We match whole *promise* phrases with word boundaries rather than
+# single words, so that harmless sentences such as "we cannot guarantee ..." or "compensation is only decided
+# after the investigation" do not trigger the check (a negation between subject and verb breaks the match).
+FORBIDDEN = {
+    "promise of a refund/compensation": r"\b(?:we|i)(?: will| shall|'ll)? (?:refund|reimburse|compensate)\b",
+    "promise of a refund/compensation to the customer": r"\byou(?: will|'ll) (?:be (?:refunded|reimbursed|compensated)"
+    r"|(?:receive|get) (?:(?:a|an|full|your) ){0,2}(?:refund|reimbursement|compensation))\b",
+    "guarantee": r"\b(?:we|i) (?:can )?guarantee\b",
+    "promise to pay": r"\b(?:we|i)(?: will| shall|'ll) pay\b",
+}
 
 COMPLAINT = (
     "I have been charged an overdraft fee of DKK 250 three months in a row even though my salary arrives "
@@ -74,10 +79,12 @@ def rule_checks(text: str) -> list[str]:
     n_words = len(text.split())
     if n_words > MAX_WORDS:
         problems.append(f"The reply has {n_words} words; the maximum is {MAX_WORDS}.")
-    for phrase in FORBIDDEN:
-        if phrase in text.lower():
+    normalised = text.lower().replace("\u2019", "'")  # typographic apostrophe -> ASCII
+    for name, pattern in FORBIDDEN.items():
+        match = re.search(pattern, normalised)
+        if match:
             problems.append(
-                f"Remove the phrase '{phrase}' - no promises before the investigation."
+                f"Remove the {name} ('{match.group()}') - no promises before the investigation."
             )
     return problems
 

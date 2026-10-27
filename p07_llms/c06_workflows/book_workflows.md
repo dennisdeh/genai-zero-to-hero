@@ -37,7 +37,10 @@ that pays off as workflows grow:
   (`graph.get_graph().draw_mermaid()`) for free - the same machinery that the agents in p08 use.
 
 Every script has a `build_graph(llm)` function that receives the model. This dependency injection makes the
-workflows easy to unit test with a fake chat model, independent of a running LLM server. The Mermaid
+workflows testable without a running LLM server - with one caveat: four of the five graphs call
+`llm.with_structured_output(...)`, which LangChain's `GenericFakeChatModel` (canned text replies) does not
+implement. Those tests need a small fake model that supports structured output, or a mock server that speaks
+the Ollama or OpenAI API. The Mermaid
 diagrams are written to `outputs/` (and rendered to PNG when the mermaid.ink service is reachable).
 
 ### Pattern 1: prompt chaining
@@ -95,7 +98,8 @@ unknown number of files or research over several sources. Bound the fan-out (her
 *One LLM call generates a response while another provides evaluation and feedback in a loop.*
 
 `main_5_evaluator_optimiser.py`: a generator drafts a reply to an angry customer complaint; the evaluator
-combines **deterministic checks** (word limit, forbidden promises such as "refund") with an **LLM judge**
+combines **deterministic checks** (word limit, forbidden promises such as "we will refund", matched as
+whole phrases with word boundaries so that "we cannot guarantee" passes) with an **LLM judge**
 (structured `Evaluation` with grade and feedback) against a written policy; the conditional edge loops back
 to the generator with the feedback until the reply passes or `MAX_ITERATIONS` is reached. The pattern works
 when there are clear evaluation criteria and when feedback demonstrably improves the result - like a human
