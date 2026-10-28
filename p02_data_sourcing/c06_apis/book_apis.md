@@ -75,16 +75,29 @@ header. `get_json` therefore checks these headers before it interprets a 403 as 
 the reset time or the requested wait instead.
 
 ### Example 3: time series (ECB exchange rates via Frankfurter)
-`main_3_exchange_rates.py` queries the Frankfurter API, which serves the euro reference rates published by the
-European Central Bank. The time-series endpoint returns a dictionary keyed by date
-(`{"rates": {"2025-01-02": {"USD": 1.03, ...}, ...}}`). Here `pd.DataFrame.from_dict(..., orient="index")` is the
-right tool - `json_normalize` would produce one row with one column per date and currency, which the script
-prints for comparison. The series is then analysed (log returns, annualised volatility, monthly averages) and
-stored. Note that rates exist only for TARGET business days. The script uses Frankfurter's *v1* API, which the
-maintainers have frozen: it is still served for existing clients, but v2 is the current version. This is a
-typical life-cycle event for any API you depend on - version endpoints explicitly (here via `--base-url`),
-watch deprecation notices, and plan the migration, because a new version often changes paths or response
-formats as well.
+`main_3_exchange_rates.py` queries version 2 of the Frankfurter API. v2 collects exchange rates from many central
+banks and official sources and by default blends them; the parameter `providers=ecb` restricts it to the euro
+reference rates published by the European Central Bank, which is what the example uses. A single endpoint,
+`/v2/rates`, serves both the latest rates and, with `from` and `to`, a time series. The response is a flat list
+of records, one per date and currency pair:
+`[{"date": "2025-01-02", "base": "EUR", "quote": "USD", "rate": 1.03}, ...]`. This "long" (tidy) format is exactly
+what `pd.DataFrame.from_records` and `json_normalize` expect; for analysis the script pivots it to one column per
+currency (`df.pivot(index="date", columns="quote", values="rate")`). The series is then analysed (log returns,
+annualised volatility, monthly averages) and stored.
+
+Two details of the data are worth knowing. Rates exist only for TARGET business days, and when a range starts on a
+day without rates (a weekend or 1 January), the API carries the previous business day's rate forward and returns
+it with its own, earlier date - the script drops rows before the requested start. A daily range filtered by
+provider may cover at most five years and five quote currencies; longer histories can be requested as weekly or
+monthly values with `group=week` or `group=month`.
+
+The example was migrated from Frankfurter's v1 API, which the maintainers have frozen: it is still served for
+existing clients, but it is deprecated. The migration is a typical life-cycle event for any API you depend on. v1
+had separate endpoints (`/v1/latest`, `/v1/<start>..<end>?symbols=...`) and returned a dictionary keyed by date
+(`{"rates": {"2025-01-02": {"USD": 1.03, ...}}}`); v2 changed the paths, the parameter names (`quotes` instead of
+`symbols`), the response format and even the default data source (a blend instead of ECB only). Version your
+endpoints explicitly (here via `--base-url`), watch deprecation notices, and check every one of these aspects
+when migrating, not only the URL.
 
 ### Checklist for consuming an API
 1. Read the documentation: authentication, rate limits, pagination, terms of use and licence of the data.

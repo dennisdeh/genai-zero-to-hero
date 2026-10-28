@@ -79,6 +79,8 @@ if __name__ == "__main__":
     graph.add_conditional_edges(
         "chatbot", determine_loop, {"loop": "tools", "exit": END}
     )
+    # loop back: the model sees the tool results and decides on the next tool call or the final answer
+    graph.add_edge("tools", "chatbot")
     # compile the graph
     agent = graph.compile()
 

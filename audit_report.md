@@ -100,14 +100,14 @@ Each entry gives what was wrong, why it matters, and what changed. IDs match the
 | P07-4 | p07 c05 book and demo | Said Ollama's default context is "a few thousand tokens"; current Ollama picks it from VRAM (4k/32k/256k), so the truncation demo did nothing on larger GPUs. | Text corrected; the demo sets `num_ctx=4096` explicitly. |
 | P07R-2 | p07 c01 README | The run steps pulled `qwen3:4b`, but the script requests `qwen3`, which then failed. | README and book corrected (pull `qwen3` or set the model). |
 | P07R-3 | p07 c04 / p08 envs | `pypdf` and `docx2txt` were missing, so the documented RAG path failed on PDF/Word files. | Added to the env files. |
-| P08-1 | p08 book and README | Described `s01/main_3` as a ReAct loop; the graph has no edge back from the tools, so the model never sees the tool result. | Text corrected: `main_3` does one tool round and the loop starts in `main_4` (see open items). |
+| P08-1 | p08 book and README | Described `s01/main_3` as a ReAct loop; the graph has no edge back from the tools, so the model never sees the tool result. | Follow-up: the owner confirmed it was meant to loop, so the missing edge `tools -> chatbot` was added and the text describes the loop (see open items). |
 
 ## Minor findings (all fixed unless noted)
 
 - **p00/p01:** `replicas` set next to the HPA; port-forward load test only reaches one pod; liveness/readiness
   rationale; request-size limit checked after parsing; unvalidated `LOG_LEVEL` could crash-loop; outdated
   GitHub Actions versions, and the pushed image wasn't the tested one; `uv sync --locked`; unused env packages.
-- **p02:** urllib3 back-off timings; GitHub rate limits on 429; APScheduler jitter; Frankfurter v1 deprecation;
+- **p02:** urllib3 back-off timings; GitHub rate limits on 429; APScheduler jitter; Frankfurter v1 deprecation (follow-up: migrated to v2);
   RFC 9309 vs stdlib robots.txt behaviour; zip-slip, cron/DST wording; `apscheduler<4`.
 - **p03:** `strip_html` on plain text and double unescaping; `parse_numeric` sign flips and silent misparses;
   unseen categories crashed the pipeline; the BPE split pattern wasn't exactly cl100k's; special-token
@@ -163,14 +163,16 @@ Not every check found a problem. Things the reviewers confirmed:
 
 ## Open items and owner decisions
 
-1. **Tracked `.env` files.** `p07_llms/c04_rag_systems/.env` and `p08_agents/c00_langchain_langgraph/.env`
-   predate this work and are tracked by git, although `.gitignore` lists `.env`. They were not opened. If they
-   contain anything secret, rotate it and replace the files with `.env.example`; the book now says they are
-   meant for non-secret settings only.
-2. **`p08 s01/main_3_simple_tools.py`** stops after one tool call. The text now describes this as a deliberate
-   step before the full loop in `main_4`. If you meant it to loop, add `graph.add_edge("tools", "chatbot")`.
-3. **Frankfurter API v1** is deprecated upstream but still works; migrating to v2 needs the v2 docs, which
-   couldn't be reached from the sandbox.
+1. **Tracked `.env` files - resolved.** The owner confirmed that `p07_llms/c04_rag_systems/.env` and
+   `p08_agents/c00_langchain_langgraph/.env` contain no secrets and are tracked on purpose, for convenience. The
+   fundamentals chapter now describes them as a deliberate exception.
+2. **`p08 s01/main_3_simple_tools.py` - resolved.** It was meant to loop: the edge `tools -> chatbot` was added,
+   so the model now calls tools until it can answer (verified with a scripted model: 24 -> 25 -> 100, then the
+   final answer). The book, README and `graph_3.png` were updated.
+3. **Frankfurter API - resolved.** The example now uses v2 (`/v2/rates` with `providers=ecb`, long-format
+   records pivoted to one column per currency, carried-forward rows before the start date dropped). The v2
+   routes and response format were taken from the upstream source code, because the documentation site was
+   blocked in the sandbox; the script was tested against a local fake of the API, not against the live service.
 4. **Pinned exports.** Six older conda env files are full pinned Linux exports, some with a `prefix:` line
    pointing at the original machine. Regenerating them with `--from-history` would make them portable.
 5. **Small PDF overflows.** A few lines still run slightly into the margin in the older `book_agents.md` table

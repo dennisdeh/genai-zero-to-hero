@@ -19,6 +19,7 @@ The references listed below also serve as additional resources for to be explore
 ### Articles:
 - Open-Meteo API documentation: https://open-meteo.com/en/docs
 - Frankfurter API: https://frankfurter.dev
+- Frankfurter source code (v1 and v2 routes, response formats): https://github.com/hakanensari/frankfurter
 - ECB euro foreign exchange reference rates: https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/index.en.html
 - RFC 9110, HTTP Semantics: https://www.rfc-editor.org/rfc/rfc9110
 - RFC 8288, Web Linking (the Link header): https://www.rfc-editor.org/rfc/rfc8288

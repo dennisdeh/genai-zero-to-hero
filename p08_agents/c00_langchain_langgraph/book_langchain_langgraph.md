@@ -49,17 +49,15 @@ text (`draw_mermaid()`), which can be viewed at https://mermaid.live.
 - `main_2_simple_chat_memory.py`: the same graph, but the loop keeps appending to the `messages` list and sends the
   whole history every time - the simplest form of short-term memory (and the reason why long conversations
   eventually exceed the context window).
-- `main_3_simple_tools.py`: **tool calling** built by hand. Two `@tool` functions (sum and multiplication of a
-  list) are bound to the model with `llm.bind_tools`; the model either answers or returns `tool_calls`. The
-  conditional edge `determine_loop` routes to a `ToolNode`, which executes the calls and appends `ToolMessage`s -
-  but the graph has no edge from the `ToolNode` back to the model, so it ends right after this single round of
-  tool calls: the printed stream shows the model's tool call(s) and the tool results, and the model never sees
-  the results or writes a final answer. The question "multiply 2, 3, 4, add 1, multiply by 4" needs several
-  rounds (each step depends on the previous result), which makes this limitation visible.
-- `main_4_simple_stock_analyser.py` and `main_5_simple_stock_analyser_chat.py`: the complete **ReAct loop** with a
-  mock stock-analysis tool. The additional edge `add_edge("tools", "chatbot")` sends the tool results back to the
-  model, which can then call further tools or answer; the loop ends when the model replies without tool calls
-  (adding the same edge to `main_3` lets it solve the multi-step calculation). The chat version compiles the graph
+- `main_3_simple_tools.py`: **tool calling** built by hand, as a **ReAct loop**. Two `@tool` functions (sum and
+  multiplication of a list) are bound to the model with `llm.bind_tools`; the model either answers or returns
+  `tool_calls`. The conditional edge `determine_loop` routes to a `ToolNode`, which executes the calls and appends
+  `ToolMessage`s, and the edge `add_edge("tools", "chatbot")` sends the results back to the model. The model then
+  decides on the next tool call or writes the final answer; the loop ends when it replies without tool calls. The
+  question "multiply 2, 3, 4, add 1, multiply by 4" needs three rounds, because each step depends on the previous
+  result (24, 25, 100): the printed stream shows the model and the tools taking turns.
+- `main_4_simple_stock_analyser.py` and `main_5_simple_stock_analyser_chat.py`: the same ReAct loop with a mock
+  stock-analysis tool. The chat version compiles the graph
   with an `InMemorySaver` checkpointer, so the history is stored per `thread_id` by LangGraph instead of by the
   calling code.
 - `main_6_math_agent_hitl.py`: `create_agent` with `HumanInTheLoopMiddleware`. Calls of `tool_multiplication` are

@@ -68,9 +68,11 @@ Settings that differ between machines (ports, model names, the LLM provider) and
 environment variables, for example `LLM_TO_USE`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL` or `OPENAI_API_KEY` in parts
 p07 and p08. Locally they are conveniently kept in a `.env` file in the repository root, which is loaded with
 `python-dotenv` and is listed in `.gitignore`: **never commit a `.env` file or paste keys into code**. Chapter c00
-explains the pattern in more detail. Two chapters (`p07_llms/c04_rag_systems` and `p08_agents/c00_langchain_langgraph`)
-contain a tracked `.env` file; these are meant to hold only non-secret settings such as ports. Secrets must
-always go in an untracked file (or the environment), never in a tracked `.env`.
+explains the pattern in more detail. The one deliberate exception in this repository: two chapters
+(`p07_llms/c04_rag_systems` and `p08_agents/c00_langchain_langgraph`) ship a tracked `.env` file for convenience,
+so that their docker compose services and scripts work out of the box. These files contain no secrets, only local
+settings for the local services, such as ports; keep it that way - real secrets always go in an untracked
+file (or the environment), never in a tracked `.env`.
 
 ### Services with Docker
 Some chapters need a running service, started with docker compose from the chapter folder:

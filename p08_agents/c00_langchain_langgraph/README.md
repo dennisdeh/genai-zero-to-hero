@@ -78,8 +78,8 @@ python -m p08_agents.c00_langchain_langgraph.s05_agents_with_memory.main_0_longt
 | `s00/main_very_simple_langgraph_looping.py` | the same with a loop: a node appends random numbers until a counter exceeds a threshold | no |
 | `s01/main_1_simple_chat.py` | one-node chat graph without memory | chat loop (Ctrl+C to quit) |
 | `s01/main_2_simple_chat_memory.py` | chat graph that keeps the conversation history | chat loop |
-| `s01/main_3_simple_tools.py` | LLM with bound tools + a conditional edge to a `ToolNode`; a single round of tool calls (no edge back to the model, so the graph ends after the tool results) | no |
-| `s01/main_4_simple_stock_analyser.py` | ReAct loop: tool-calling agent with a (mock) stock analysis tool and an edge from the tools back to the model | no |
+| `s01/main_3_simple_tools.py` | ReAct loop built by hand: LLM with bound tools, a conditional edge to a `ToolNode` and an edge back to the model, which calls tools until it can answer | no |
+| `s01/main_4_simple_stock_analyser.py` | the same ReAct loop with a (mock) stock analysis tool | no |
 | `s01/main_5_simple_stock_analyser_chat.py` | the same as a chat with `InMemorySaver` checkpointing | chat loop |
 | `s01/main_6_math_agent_hitl.py` | `create_agent` with `HumanInTheLoopMiddleware`: approve, edit or reject a tool call, resume with `Command(resume=...)` | approval prompt |
 | `s02/main_rag_agent.py` | agentic RAG: the agent decides when to call a Qdrant retrieval tool over the FINMA documents (and a mock stock analysis tool) | no |
